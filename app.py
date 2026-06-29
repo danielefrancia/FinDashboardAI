@@ -265,20 +265,22 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         df_chart = pd.DataFrame({'Prezzo Target': previsioni_prezzo}, index=giorni_settimana)
                         st.line_chart(df_chart)
                     
-                    # --- NUOVA SEZIONE: GUIDA METRICHE ESPANDIBILE ---
+                    # --- GUIDA METRICHE ESPANDIBILE AGGIORNATA ---
                     st.markdown("<br>", unsafe_allow_html=True)
-                    with st.expander("📖 Guida Rapida alla Lettura delle Metriche e delle Proiezioni"):
+                    with st.expander("📖 Guida Rapida alla Lettura delle Metriche e Discrepanze Moduli"):
                         st.markdown("""
-                        ### 1. Proiezione Lineare Adattiva (Tabella e Grafico)
-                        * **Prezzo Target:** È il valore stimato calcolato da un algoritmo di *Linear Regression*. Invece di tirare a indovinare il prezzo fisso, il modello valuta lo stato di ipercomprato/ipervenduto attuale (`RSI`, distanze dalle `Bande di Bollinger`) e calcola la variazione percentuale più probabile giorno per giorno, applicandola all'ultimo prezzo reale.
-                        * **Variazione Attesa:** Rappresenta lo scostamento percentuale rispetto all'ultimo prezzo di chiusura del mercato.
+                        ### 1. Perché la Strategia Settimanale e le Proiezioni possono differire?
+                        * **Modulo 1 (Strategia Settimanale):** Ragiona su dati qualitativi macro (FinGPT Sentiment) e cicli storici ricorrenti legati ai giorni della settimana. Guarda il quadro psicologico complessivo.
+                        * **Modulo 2 (Proiezione Lineare):** Ignora le news. È un puro modello matematico e reattivo basato sulle ultime 48-120 ore di indicatori quantitativi (`RSI`, volumi standardizzati, `Bande di Bollinger`). Calcola l'inerzia di brevissimo termine.
                         
-                        ### 2. Probabilità dell'Ensemble Model (Classificazione)
-                        Questo blocco utilizza due modelli di *Random Forest Classifier* paralleli stabili, addestrati per rispondere a una domanda specifica: *'Tra 7 giorni, dove si troverà il prezzo?'*
-                        * **🚀 Probabilità Take Profit:** Percentuale di confidenza che il titolo crescerà di un valore **pari o superiore al +2%** rispetto a oggi.
-                        * **↔️ Probabilità Lateralità:** Confidenza che il titolo rimarrà compresso in un range ristretto (tra -2% e +2%), ottimo scenario per strategie di vendita Opzioni (Iron Condor, Theta Burn).
-                        * **⚠️ Probabilità Stop Loss:** Percentuale di rischio che il titolo scenda di un valore **pari o inferiore al -2%**, suggerendo prudenza o l'impostazione di coperture.
-                        * **Affidabilità Algoritmo (Score):** Indica la precisione matematica dei modelli durante la fase di backtest sull'ultimo 20% dei dati storici analizzati.
+                        ### 2. Come pianificare l'operatività sugli altri giorni?
+                        * **Passo A:** Individua i giorni caldi nel Modulo 1 (es. un giorno marcato come *'Acquisto'*).
+                        * **Passo B:** Verifica le **Probabilità dell'Ensemble Model** (valide a 7 giorni). Se per quella settimana la probabilità di *Take Profit* è solida (>40%) e lo *Stop Loss* è basso, la finestra temporale ciclica è convalidata.
+                        * **Passo C:** Controlla la pendenza della **Proiezione Lineare**. Se la curva a 5 giorni sale in corrispondenza del giorno utile, hai una convergenza perfetta (*Bullish Convergence*). Se la curva scende, indica prudenza o ingressi solo su minimi del range operativo stimato.
+
+                        ### 3. Dettaglio Tecnico dei Modelli
+                        * **Prezzo Target (Linear Regression):** Proietta il prezzo nominale stimato applicando i rendimenti incrementali futuri attesi calcolati sullo stato ipercomprato/ipervenduto odierno.
+                        * **Probabilità Random Forest (Ensemble):** Misura l'affidabilità statistica a 7 giorni. Valuta le probabilità di assistere a una crescita robusta (Take Profit $\geq +2\%$), compressione laterale (ottima per strategie su Opzioni) o ritracciamento (Stop Loss $\leq -2\%$).
                         """)
                         
                     st.success("Sincronizzazione dati e report eseguiti correttamente.")

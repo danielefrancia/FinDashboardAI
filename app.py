@@ -151,17 +151,17 @@ if tipo_analisi == "📈 Dashboard Predittiva Settimanale":
                 """, unsafe_allow_html=True)
 
 
-# --- MODULO 2: MODELLO OPZIONI E RISCHIO ---
+# --- MODULO 2: MODELLO OPZIONI, STOP-LOSS & VALIDAZIONE FORECAST ---
 elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
-    st.title("📊 Modello Predittivo Avanzato & Strategia Integrata")
-    st.markdown("<p style='color: #64748b;'>Validazione statistica del rischio incrociata con l'analisi multi-agente.</p>", unsafe_allow_html=True)
+    st.title("📊 Modello Predittivo Avanzato & Validazione Forecast")
+    st.markdown("<p style='color: #64748b;'>Validazione statistica e confronto tra i dati reali del mese e il Forecast simulato a inizio mese.</p>", unsafe_allow_html=True)
     
     if ticker_global:
         with st.spinner("Estrazione e pulizia dati real-time..."):
             try:
                 ticker_pulito = ticker_global.split('.')[0]
                 stock_obj = yf.Ticker(ticker_pulito)
-                df = stock_obj.history(period="2y", interval="1d", auto_adjust=True, actions=True)
+                df = stock_obj.history(period="6mo", interval="1d", auto_adjust=True)
                 
                 if not df.empty and len(df) > 50:
                     if isinstance(df.columns, pd.MultiIndex):
@@ -177,7 +177,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     
                     prezzo_attuale = float(df['Close'].iloc[-1])
                     
-                    # Indicatori Tecnici
+                    # --- CALCOLO INDICATORI SULLO STORICO ---
                     delta = df['Close'].diff()
                     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -188,15 +188,18 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     df['STD20'] = df['Close'].rolling(window=20).std()
                     df['Bollinger_Upper'] = df['MA20'] + (2 * df['STD20'])
                     df['Bollinger_Lower'] = df['MA20'] - (2 * df['STD20'])
-                    
                     df['Distanza_Banda_Sup'] = (df['Close'] - df['Bollinger_Upper']) / df['Bollinger_Upper']
                     df['Distanza_Banda_Inf'] = (df['Close'] - df['Bollinger_Lower']) / df['Bollinger_Lower']
-                    
                     df['Vol_Media20'] = df['Volume'].rolling(window=20).mean()
                     df['Vol_STD20'] = df['Volume'].rolling(window=20).std()
                     df['Volumi_Standardizzati'] = (df['Volume'] - df['Vol_Media20']) / (df['Vol_STD20'] + 1e-10)
                     
-                    # Target Shiftati (No data leakage)
+                    features = ['RSI', 'Distanza_Banda_Sup', 'Distanza_Banda_Inf', 'Volumi_Standardizzati']
+                    
+                    # Target Shiftati per l'addestramento (senza data leakage)
+                    for i in range(1, 6):
+                        df[f'Target_Return_t+{i}'] = (df['Close'].shift(-i) - df['Close']) / df['Close']
+                        
                     rendimento_futuro_7g = (df['Close'].shift(-7) - df['Close']) / df['Close']
                     target_classes = []
                     for val in rendimento_futuro_7g:
@@ -205,98 +208,98 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         elif val <= -0.02: target_classes.append(1)
                         else: target_classes.append(0)
                     df['Target_Class'] = target_classes
-                    
-                    features = ['RSI', 'Distanza_Banda_Sup', 'Distanza_Banda_Inf', 'Volumi_Standardizzati']
-                    
-                    for i in range(1, 6):
-                        df[f'Target_Return_t+{i}'] = (df['Close'].shift(-i) - df['Close']) / df['Close']
-                    
-                    # Ultima riga pulita per l'input di oggi
-                    ultimo_stato_df = df[features].tail(1)
-                    if ultimo_stato_df.isna().values.any():
-                        df[features] = df[features].ffill()
-                        ultimo_stato_df = df[features].tail(1)
 
-                    # Training Dataset
-                    df_train = df.dropna(subset=['Target_Class'] + [f'Target_Return_t+{i}' for i in range(1, 6)] + features).copy()
+                    # --- ADDESTRAMENTO MODELLI SUI DATI STORICI ---
+                    df_pulito = df.dropna(subset=['Target_Class'] + [f'Target_Return_t+{i}' for i in range(1, 6)] + features).copy()
+                    X_all = df_pulito[features]
+                    y_class_all = df_pulito['Target_Class'].astype(int)
                     
-                    if len(df_train) < 30:
-                        st.error("Storico insufficientre per l'addestramento.")
-                        st.stop()
-                        
-                    X = df_train[features]
-                    y_class = df_train['Target_Class'].astype(int)
+                    modello_rf = RandomForestClassifier(n_estimators=100, max_depth=6, random_state=42)
+                    modello_rf.fit(X_all, y_class_all)
                     
-                    # Ensemble Machine Learning
-                    split = int(len(df_train) * 0.8)
-                    modello_rf1 = RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42)
-                    modello_rf2 = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=2026)
-                    modello_rf1.fit(X.iloc[:split], y_class.iloc[:split])
-                    modello_rf2.fit(X.iloc[:split], y_class.iloc[:split])
-                    accuratezza = modello_rf1.score(X.iloc[split:], y_class.iloc[split:])
-                    
-                    prob1 = modello_rf1.predict_proba(ultimo_stato_df)[0]
-                    prob2 = modello_rf2.predict_proba(ultimo_stato_df)[0]
-                    probabilita_array = (prob1 + prob2) / 2
-                    
-                    classi_modello = list(modello_rf1.classes_)
-                    prob_laterale = probabilita_array[classi_modello.index(0)] if 0 in classi_modello else 0.0
-                    prob_stop_loss = probabilita_array[classi_modello.index(1)] if 1 in classi_modello else 0.0
-                    prob_take_profit = probabilita_array[classi_modello.index(2)] if 2 in classi_modello else 0.0
-                    
-                    # Regressioni Lineari da t+1 a t+5
-                    previsioni_prezzo = []
-                    variaz_reg_salvate = []
+                    # Regressori lineari per i 5 giorni di proiezione
+                    regressori = {}
                     for i in range(1, 6):
-                        y_reg = df_train[f'Target_Return_t+{i}']
-                        modello_reg = LinearRegression()
-                        modello_reg.fit(X, y_reg)
+                        reg_m = LinearRegression()
+                        reg_m.fit(X_all, df_pulito[f'Target_Return_t+{i}'])
+                        regressori[i] = reg_m
+
+                    # --- SIMULAZIONE FORECAST INIZIO MESE (BACKTEST) ---
+                    oggi = datetime.now()
+                    inizio_mese = oggi.replace(day=1)
+                    dati_mese_corrente = df[df.index >= pd.Timestamp(inizio_mese)]
+                    
+                    if len(dati_mese_corrente) >= 2:
+                        idx_inizio = dati_mese_corrente.index[0]
+                        prezzo_inizio = float(df.loc[idx_inizio, 'Close'])
+                        features_inizio = df.loc[[idx_inizio], features]
                         
-                        variazione_stimata = modello_reg.predict(ultimo_stato_df)[0]
-                        variazione_stimata = np.clip(variazione_stimata, -0.15, 0.15)
-                        variaz_reg_salvate.append(variazione_stimata)
-                        previsioni_prezzo.append(prezzo_attuale * (1 + variazione_stimata))
+                        date_forecast_storico = []
+                        prezzi_forecast_storico = []
+                        
+                        date_forecast_storico.append(idx_inizio)
+                        prezzi_forecast_storico.append(prezzo_inizio)
+                        
+                        pos_iniziale = df.index.get_loc(idx_inizio)
+                        for i in range(1, 6):
+                            if pos_iniziale + i < len(df):
+                                data_f = df.index[pos_iniziale + i]
+                                var_stimata = regressori[i].predict(features_inizio)[0]
+                                var_stimata = np.clip(var_stimata, -0.15, 0.15)
+                                
+                                date_forecast_storico.append(data_f)
+                                prezzi_forecast_storico.append(prezzo_inizio * (1 + var_stimata))
+                        show_backtest = True
+                    else:
+                        show_backtest = False
+
+                    # --- PROIEZIONE FUTURA IN AVANTI AD OGGI (t+1 a t+5) ---
+                    ultimo_stato_df = df[features].tail(1).ffill()
+                    previsioni_prezzo_futuro = []
+                    variaz_reg_salvate = []
                     
-                    df['Daily_Range'] = (df['High'] - df['Low']) / df['Close']
-                    volatilia_media = float(df['Daily_Range'].tail(10).mean())
-                    
+                    mappa_giorni = {
+                        'Monday': 'Lunedì', 'Tuesday': 'Martedì', 'Wednesday': 'Mercoledì',
+                        'Thursday': 'Giovedì', 'Friday': 'Venerdì', 'Saturday': 'Sabato', 'Sunday': 'Domenica'
+                    }
+                    giorni_futuri = []
+                    data_c = datetime.now()
+                    p = 1
+                    while len(giorni_futuri) < 5:
+                        g_futuro = data_c + timedelta(days=p)
+                        if g_futuro.weekday() < 5:
+                            giorni_futuri.append(f"{mappa_giorni.get(g_futuro.strftime('%A'))} ({g_futuro.strftime('%d/%m')})")
+                        p += 1
+
+                    for i in range(1, 6):
+                        var_stimata = regressori[i].predict(ultimo_stato_df)[0]
+                        var_stimata = np.clip(var_stimata, -0.15, 0.15)
+                        variaz_reg_salvate.append(var_stimata)
+                        previsioni_prezzo_futuro.append(prezzo_attuale * (1 + var_stimata))
+
+                    # --- INTERFACCIA GRAFICA MATRICE DI SENTIMENT ---
                     macro_data = engine.analyze_ticker(ticker_global)
                     sentiment_macro = macro_data['sentiment']
+                    prob_array = modello_rf.predict_proba(ultimo_stato_df)[0]
+                    classi = list(modello_rf.classes_)
+                    prob_take_profit = prob_array[classi.index(2)] if 2 in classi else 0.0
+                    prob_stop_loss = prob_array[classi.index(1)] if 1 in classi else 0.0
                     
                     st.write("### 🎯 Matrice Operativa Integrata (Sentiment + Rischio)")
-                    
                     if sentiment_macro > 65 and prob_take_profit > 0.40:
-                        conclusione_hub = "🟢 CONDIZIONE DI ACQUISTO (BULLISH CONVERGENCE)"
-                        colore_hub = "#10b981"
-                        desc_hub = f"Sia l'analisi multi-agente ({sentiment_macro}% sentiment) sia il modello probabilistico statistico confermano un'elevata probabilità di rialzo."
+                        conclusione_hub, colore_hub = "🟢 CONDIZIONE DI ACQUISTO (BULLISH CONVERGENCE)", "#10b981"
                     elif prob_stop_loss > 0.45:
-                        conclusione_hub = "🔴 EVITARE INGRESSI / ATTESA (BEARISH DOMINANCE)"
-                        colore_hub = "#ef4444"
-                        desc_hub = f"Attenzione: L'Ensemble di Machine Learning rileva un rischio di Stop Loss del {prob_stop_loss:.1%}. Struttura tecnica debole."
+                        conclusione_hub, colore_hub = "🔴 EVITARE INGRESSI / ATTESA (BEARISH DOMINANCE)", "#ef4444"
                     else:
-                        conclusione_hub = "🟡 STRATEGIA NEUTRA DI COMPRESSIONE (CONSOLIDAMENTO)"
-                        colore_hub = "#f59e0b"
-                        desc_hub = "I modelli divergono o indicano lateralità. Ottima stabilità per strategie basate sul trading di range."
-
-                    target_prossima_sessione = previsioni_prezzo[0]
-                    var_prossima_sessione = variaz_reg_salvate[0]
-                    estensione_attesa = prezzo_attuale * volatilia_media
+                        conclusione_hub, colore_hub = "🟡 STRATEGIA NEUTRA DI COMPRESSIONE (CONSOLIDAMENTO)", "#f59e0b"
 
                     st.markdown(f"""
                         <div class="fusion-box">
-                            <span style="color: #94a3b8; font-size: 0.85rem; font-weight: bold;">FUSIONE INTELLIGENTE MULTI-MODELLO</span>
-                            <h3 style="margin: 5px 0 12px 0; color: {colore_hub}; font-size: 1.35rem !important;">{conclusione_hub}</h3>
-                            <p style="color: #cbd5e1; font-size: 0.95rem; margin-bottom: 12px;">{desc_hub}</p>
-                            <hr style="border-color: #1e293b; margin: 10px 0;">
-                            <p style="font-size: 1rem; margin-bottom: 4px; color: #f8fafc;">
-                                📅 <b>Target Prossima Sessione (t+1):</b> ${target_prossima_sessione:.2f} <span style="color:{colore_hub}; font-weight:bold;">({var_prossima_sessione:+.2%})</span>
-                            </p>
-                            <p style="font-size: 0.95rem; margin-bottom: 0; color: #94a3b8;">
-                                🎯 <b>Range Operativo Stimato:</b> Min: <span style="color:#ef4444;">${(target_prossima_sessione - estensione_attesa/2):.2f}</span> | Max: <span style="color:#10b981;">${(target_prossima_sessione + estensione_attesa/2):.2f}</span>
-                            </p>
+                            <h3 style="margin: 0 0 10px 0; color: {colore_hub}; font-size: 1.35rem !important;">{conclusione_hub}</h3>
+                            <p style="color: #cbd5e1; margin-bottom: 0;">Analisi probabilistica calcolata su {len(df_pulito)} sessioni storiche.</p>
                         </div>
                     """, unsafe_allow_html=True)
-                    
+
                     col1, col2 = st.columns(2)
                     with col1:
                         st.markdown("#### 📈 Indicatori Tecnici Certificati")
@@ -315,83 +318,73 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         st.markdown("#### 🎯 Probabilità dell'Ensemble Model")
                         st.markdown(f"""
                             <div class="metric-box">
-                                <b>Affidabilità Algoritmo:</b> {accuratezza:.2%}<br>
+                                <b>Affidabilità Algoritmo:</b> {modello_rf.score(X_all, y_class_all):.2%}<br>
                                 <span style="color:#10b981; font-weight:bold;">🚀 Probabilità Take Profit (≥ +2%):</span> {prob_take_profit:.1%}<br>
-                                <span style="color:#3b82f6; font-weight:bold;">↔️ Probabilità Lateralità:</span> {prob_laterale:.1%}<br>
+                                <span style="color:#3b82f6; font-weight:bold;">↔️ Probabilità Lateralità:</span> {1-(prob_take_profit+prob_stop_loss):.1%}<br>
                                 <span style="color:#ef4444; font-weight:bold;">⚠️ Probabilità Stop Loss (≤ -2%):</span> {prob_stop_loss:.1%}
                             </div>
                         """, unsafe_allow_html=True)
-                    
+
+                    # --- GRAFICO DI VALIDAZIONE (REALE vs FORECAST) ---
                     st.write("---")
-                    st.subheader("📅 Proiezione Lineare Adattiva (t+1 a t+5)")
-                    st.write("Prezzi puntuali attesi calcolati tramite regressione logica adattata alle variazioni percentuali.")
+                    st.subheader("📉 Analisi di Validazione: Reale vs Modello Predictor")
+                    st.write("Questo grafico mette a confronto l'andamento reale del prezzo nel mese corrente con il forecast generato artificialmente dal modello a inizio mese.")
                     
-                    # --- TRADUZIONE CRONOLOGICA DEI GIORNI IN ITALIANO ---
-                    mappa_giorni = {
-                        'Monday': 'Lunedì', 'Tuesday': 'Martedì', 'Wednesday': 'Mercoledì',
-                        'Thursday': 'Giovedì', 'Friday': 'Venerdì', 'Saturday': 'Sabato', 'Sunday': 'Domenica'
-                    }
+                    fig_val = go.Figure()
                     
-                    giorni_settimana = []
-                    data_corrente = datetime.now()
-                    passo = 1
-                    while len(giorni_settimana) < 5:
-                        giorno_futuro = data_corrente + timedelta(days=passo)
-                        if giorno_futuro.weekday() < 5:
-                            nome_ing = giorno_futuro.strftime('%A')
-                            nome_ita = mappa_giorni.get(nome_ing, nome_ing)
-                            giorni_settimana.append(f"{nome_ita} ({giorno_futuro.strftime('%d/%m')})")
-                        passo += 1
+                    # Linea 1: Prezzo Reale
+                    fig_val.add_trace(go.Scatter(
+                        x=dati_mese_corrente.index, y=dati_mese_corrente['Close'],
+                        mode='lines+markers', name='Prezzo Reale (Mercato)',
+                        line=dict(color='#3b82f6', width=3)
+                    ))
+                    
+                    # Linea 2: Forecast
+                    if show_backtest:
+                        fig_val.add_trace(go.Scatter(
+                            x=date_forecast_storico, y=prezzi_forecast_storico,
+                            mode='lines+markers', name='Forecast Simulato Inizio Mese',
+                            line=dict(color='#ef4444', width=2, dash='dash'),
+                            marker=dict(symbol='x', size=7)
+                        ))
+                    
+                    fig_val.update_layout(
+                        height=350, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                        xaxis=dict(showgrid=True, gridcolor='#1e293b', tickfont=dict(color='#94a3b8')),
+                        yaxis=dict(showgrid=True, gridcolor='#1e293b', tickfont=dict(color='#94a3b8'), autorange=True),
+                        legend=dict(font=dict(color='#f8fafc'), bgcolor='rgba(15,23,42,0.8)', orientation='h', y=1.1)
+                    )
+                    st.plotly_chart(fig_val, use_container_width=True, config={'displayModeBar': False})
+
+                    # --- PROIEZIONE FUTURA IN AVANTI ---
+                    st.write("---")
+                    st.subheader("📅 Proiezione Lineare Adattiva (Prossimi 5 Giorni)")
                     
                     df_previsioni = pd.DataFrame({
-                        'Giorno Previsto': giorni_settimana,
-                        'Prezzo Target': [f"${p:.2f}" for p in previsioni_prezzo],
+                        'Giorno Previsto': giorni_futuri,
+                        'Prezzo Target': [f"${p:.2f}" for p in previsioni_prezzo_futuro],
                         'Variazione Attesa': [f"{v:+.2%}" for v in variaz_reg_salvate]
                     })
                     
-                    # --- RENDERING COERENTE CON PLOTLY (ZOOM DI PREZZO AUTOMATICO) ---
                     c_tab, c_graf = st.columns([1, 1])
                     with c_tab:
                         st.dataframe(df_previsioni, use_container_width=True, hide_index=True)
                     with c_graf:
-                        df_chart = pd.DataFrame({
-                            'Giorno': giorni_settimana,
-                            'Prezzo': previsioni_prezzo
-                        })
-                        
-                        fig = go.Figure()
-                        fig.add_trace(go.Scatter(
-                            x=df_chart['Giorno'],
-                            y=df_chart['Prezzo'],
-                            mode='lines+markers',
-                            line=dict(color='#3b82f6', width=3),
-                            marker=dict(size=6, color='#a855f7'),
-                            name='Target Price'
+                        fig_fut = go.Figure()
+                        fig_fut.add_trace(go.Scatter(
+                            x=giorni_futuri, y=previsioni_prezzo_futuro,
+                            mode='lines+markers', line=dict(color='#a855f7', width=3),
+                            marker=dict(size=6, color='#3b82f6'), name='Prezzo Posteriore'
                         ))
-                        
-                        fig.update_layout(
-                            margin=dict(l=20, r=20, t=10, b=10),
-                            height=280,
-                            paper_bgcolor='rgba(0,0,0,0)',
-                            plot_bgcolor='rgba(0,0,0,0)',
-                            xaxis=dict(
-                                showgrid=True, 
-                                gridcolor='#1e293b', 
-                                tickfont=dict(color='#94a3b8'),
-                                categoryorder='array',  # Mantiene bloccata la cronologia t+1 -> t+5
-                                categoryarray=giorni_settimana
-                            ),
-                            yaxis=dict(
-                                showgrid=True, 
-                                gridcolor='#1e293b', 
-                                tickfont=dict(color='#94a3b8'),
-                                autorange=True  # Rimuove lo zero forzato ed esegue lo zoom sul prezzo reale
-                            )
+                        fig_fut.update_layout(
+                            margin=dict(l=20, r=20, t=10, b=10), height=220,
+                            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                            xaxis=dict(showgrid=True, gridcolor='#1e293b', tickfont=dict(color='#94a3b8')),
+                            yaxis=dict(showgrid=True, gridcolor='#1e293b', tickfont=dict(color='#94a3b8'), autorange=True)
                         )
-                        
-                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-                        
-                    st.success("Sincronizzazione dati e report eseguiti correttamente.")
+                        st.plotly_chart(fig_fut, use_container_width=True, config={'displayModeBar': False})
+
+                    st.success("Analisi di distacco modello-reale completata correttamente.")
                 else:
                     st.error("Dati storici non disponibili o non allineati per il ticker inserito.")
             except Exception as e:

@@ -185,20 +185,63 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         modello_reg.fit(X, y_reg)
                         previsioni_prezzo.append(modello_reg.predict(vettore_input)[0])
                     
-                    # --- INTERFACCIA GRAFICA ---
-                    prezzo_attuale = float(df['Close'].iloc[-1]) # Estrazione pulita del prezzo di chiusura più recente
+                   # --- INTERFACCIA GRAFICA ---
+                    # Estrazione sicura del prezzo reale (evita MultiIndex e garantisce l'ultimo valore numerico valido)
+                    if isinstance(df['Close'], pd.DataFrame):
+                        prezzo_attuale = float(df['Close'].iloc[-1].values[0])
+                    else:
+                        prezzo_attuale = float(df['Close'].iloc[-1])
+                        
+                    # Calcolo della Volatilità Giornaliera Media degli ultimi 10 giorni per stabilire i target operativi
+                    df['Daily_Range'] = (df['High'] - df['Low']) / df['Close']
+                    volatilia_media = float(df['Daily_Range'].tail(10).mean())
+                    
                     st.write(f"### Analisi Predittiva del Rischio per {ticker_input} (Orizzonte 7 Giorni)")
                     
-                    # --- NUOVO BOX: RECAP FOCUS GIORNO CORRENTE ---
+                    # --- DETERMINAZIONE SEGNALE OPERATIVO GIORNALIERO ---
+                    if prob_take_profit > 0.45:
+                        segno_operativo = "🟢 ACCUMULO / BULLISH"
+                        colore_segnale = "#10b981"
+                        nota_operativa = "Il modello mostra una forte spinta inerziale verso la banda superiore. Possibile breakout statistico."
+                    elif prob_stop_loss > 0.45:
+                        segno_operativo = "🔴 DISTRIBUZIONE / BEARISH"
+                        colore_segnale = "#ef4444"
+                        nota_operativa = "Rilevata pressione in vendita o volumi in contrazione vicino alle resistenze. Monitorare i supporti."
+                    else:
+                        segno_operativo = "🟡 ATTESA / LATERALE"
+                        colore_segnale = "#f59e0b"
+                        nota_operativa = "Il prezzo si trova in una fase di compressione all'interno delle Bande di Bollinger. Strategia di trading di raggio."
+
+                    # Calcolo dei Pivot operativi attesi per la prossima sessione (t+1)
+                    target_prossima_sessione = previsioni_prezzo[0]
+                    var_prossima_sessione = ((target_prossima_sessione - prezzo_attuale) / prezzo_attuale)
+                    estensione_attesa = target_prossima_sessione * volatilia_media
+                    
+                    # --- FOCUS GIORNO CORRENTE & REPORT OPERATIVO AVANZATO ---
                     st.markdown(f"""
-                        <div style="background-color: #0f172a; border: 2px solid #3b82f6; padding: 20px; border-radius: 10px; margin-bottom: 25px;">
-                            <h4 style="margin-top:0; color:#3b82f6;">📅 Focus Giorno Corrente & Prospettiva Immediata</h4>
-                            <p style="font-size: 1.1rem; margin-bottom: 8px;">
-                                Il titolo <b>{ticker_input}</b> ha chiuso l'ultima sessione reale a un prezzo di <span style="color:#f8fafc; font-weight:bold;">${prezzo_attuale:.2f}</span>.
+                        <div style="background-color: #0f172a; border: 2px solid #3b82f6; padding: 22px; border-radius: 10px; margin-bottom: 25px;">
+                            <h4 style="margin-top:0; color:#3b82f6; font-size: 1.2rem;">📅 Report Strategico della Prossima Sessione Operativa</h4>
+                            <div style="display: flex; justify-content: space-between; flex-wrap: wrap; margin-bottom: 15px;">
+                                <div style="min-width: 200px; margin-bottom: 10px;">
+                                    <span style="color: #64748b; font-size: 0.9rem;">ULTIMO PREZZO REALE</span><br>
+                                    <span style="font-size: 1.6rem; font-weight: bold; color: #f8fafc;">${prezzo_attuale:.2f}</span>
+                                </div>
+                                <div style="min-width: 200px; margin-bottom: 10px;">
+                                    <span style="color: #64748b; font-size: 0.9rem;">DIREZIONE ENSEMBLE AI</span><br>
+                                    <span style="font-size: 1.2rem; font-weight: bold; color: {colore_segnale};">{segno_operativo}</span>
+                                </div>
+                                <div style="min-width: 200px; margin-bottom: 10px;">
+                                    <span style="color: #64748b; font-size: 0.9rem;">TARGET PUNTUALE ATTESO (t+1)</span><br>
+                                    <span style="font-size: 1.4rem; font-weight: bold; color: #f8fafc;">${target_prossima_sessione:.2f}</span> 
+                                    <span style="font-size: 1rem; color: {colore_segnale}; font-weight: bold;">({var_prossima_sessione:+.2%})</span>
+                                </div>
+                            </div>
+                            <hr style="border-color: #1e293b; margin: 10px 0;">
+                            <p style="font-size: 0.95rem; margin-bottom: 5px; color: #cbd5e1;">
+                                🎯 <b>Range Operativo Stimato:</b> Min: <span style="color:#ef4444;">${(target_prossima_sessione - estensione_attesa/2):.2f}</span> | Max: <span style="color:#10b981;">${(target_prossima_sessione + estensione_attesa/2):.2f}</span>
                             </p>
-                            <p style="font-size: 1rem; color: #94a3b8;">
-                                🚀 <b>Target t+1 (Prossima Sessione):</b> ${previsioni_prezzo[0]:.2f} 
-                                ({((previsioni_prezzo[0] - prezzo_attuale) / prezzo_attuale):+.2%})
+                            <p style="font-size: 0.9rem; color: #94a3b8; font-style: italic; margin-bottom: 0;">
+                                💡 <b>Nota dell'Agente:</b> {nota_operativa}
                             </p>
                         </div>
                     """, unsafe_allow_html=True)
@@ -226,37 +269,6 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                                 <span style="color:#ef4444; font-weight:bold;">⚠️ Stop Loss (≤ -3%):</span> {prob_stop_loss:.1%}
                             </div>
                         """, unsafe_allow_html=True)
-                    
-                    # --- 4. PREVISIONE PREZZI GIORNALIERI ---
-                    st.write("---")
-                    st.subheader("📅 Previsione del Prezzo Target nei Prossimi Giorni")
-                    st.write("Prezzi puntuali attesi calcolati tramite regressione adattiva basata sulle metriche correnti.")
-                    
-                    # Generazione date escludendo weekend
-                    giorni_settimana = []
-                    data_corrente = datetime.now()
-                    passo = 1
-                    while len(giorni_settimana) < 5:
-                        giorno_futuro = data_corrente + timedelta(days=passo)
-                        if giorno_futuro.weekday() < 5:
-                            giorni_settimana.append(giorno_futuro.strftime('%A (%d/%m)'))
-                        passo += 1
-                    
-                    # Corretto il calcolo della variazione percentuale usando il prezzo_attuale ripulito
-                    df_previsioni = pd.DataFrame({
-                        'Giorno Previsto': giorni_settimana,
-                        'Prezzo Target': [f"${p:.2f}" for p in previsioni_prezzo],
-                        'Variazione Attesa': [f"{((p - prezzo_attuale) / prezzo_attuale):+.2%}" for p in previsioni_prezzo]
-                    })
-                    
-                    c_tab, c_graf = st.columns([1, 1])
-                    with c_tab:
-                        st.dataframe(df_previsioni, use_container_width=True, hide_index=True)
-                    with c_graf:
-                        df_chart = pd.DataFrame({'Prezzo Target': previsioni_prezzo}, index=giorni_settimana)
-                        st.line_chart(df_chart)
-                        
-                    st.success("Analisi statistica e forecast completati con successo.")
                     
                     # --- 4. PREVISIONE PREZZI GIORNALIERI ---
                     st.write("---")

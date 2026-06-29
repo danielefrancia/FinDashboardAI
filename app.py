@@ -122,7 +122,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     df['Vol_STD20'] = df['Volume'].rolling(window=20).std()
                     df['Volumi_Standardizzati'] = (df['Volume'] - df['Vol_Media20']) / (df['Vol_STD20'] + 1e-10)
                     
-                    # Target Classificazione Rischio
+                    # Target Classificazione Rischio (7 giorni)
                     rendimento_futuro_7g = (df['Close'].shift(-7) - df['Close']) / df['Close']
                     target_classes = []
                     for val in rendimento_futuro_7g:
@@ -132,7 +132,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         else: target_classes.append(0)
                     df['Target_Class'] = target_classes
                     
-                    # CORREZIONE: Addestriamo la regressione sul RENDIMENTO futuro (variazione %), non sul prezzo assoluto
+                    # Regressione sui rendimenti percentuali futuri (t+1 a t+5)
                     for i in range(1, 6):
                         df[f'Target_Return_t+{i}'] = (df['Close'].shift(-i) - df['Close']) / df['Close']
                     
@@ -162,7 +162,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     prob_stop_loss = probabilita_array[classi_modello.index(1)] if 1 in classi_modello else 0.0
                     prob_take_profit = probabilita_array[classi_modello.index(2)] if 2 in classi_modello else 0.0
                     
-                    # CORREZIONE REGRESSIONE LINEARE: Calcolo variazioni e ricostruzione dinamica del prezzo basata su prezzo_attuale
+                    # Calcolo proiezioni tramite Regressione Lineare
                     previsioni_prezzo = []
                     variaz_reg_salvate = []
                     for i in range(1, 6):
@@ -171,7 +171,6 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         modello_reg.fit(X, y_reg)
                         variazione_stimata = modello_reg.predict(vettore_input)[0]
                         
-                        # Impediamo oscillazioni assurde dovute a code storiche anomale
                         variazione_stimata = np.clip(variazione_stimata, -0.15, 0.15)
                         variaz_reg_salvate.append(variazione_stimata)
                         previsioni_prezzo.append(prezzo_attuale * (1 + variazione_stimata))
@@ -265,6 +264,22 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     with c_graf:
                         df_chart = pd.DataFrame({'Prezzo Target': previsioni_prezzo}, index=giorni_settimana)
                         st.line_chart(df_chart)
+                    
+                    # --- NUOVA SEZIONE: GUIDA METRICHE ESPANDIBILE ---
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    with st.expander("📖 Guida Rapida alla Lettura delle Metriche e delle Proiezioni"):
+                        st.markdown("""
+                        ### 1. Proiezione Lineare Adattiva (Tabella e Grafico)
+                        * **Prezzo Target:** È il valore stimato calcolato da un algoritmo di *Linear Regression*. Invece di tirare a indovinare il prezzo fisso, il modello valuta lo stato di ipercomprato/ipervenduto attuale (`RSI`, distanze dalle `Bande di Bollinger`) e calcola la variazione percentuale più probabile giorno per giorno, applicandola all'ultimo prezzo reale.
+                        * **Variazione Attesa:** Rappresenta lo scostamento percentuale rispetto all'ultimo prezzo di chiusura del mercato.
+                        
+                        ### 2. Probabilità dell'Ensemble Model (Classificazione)
+                        Questo blocco utilizza due modelli di *Random Forest Classifier* paralleli stabili, addestrati per rispondere a una domanda specifica: *'Tra 7 giorni, dove si troverà il prezzo?'*
+                        * **🚀 Probabilità Take Profit:** Percentuale di confidenza che il titolo crescerà di un valore **pari o superiore al +2%** rispetto a oggi.
+                        * **↔️ Probabilità Lateralità:** Confidenza che il titolo rimarrà compresso in un range ristretto (tra -2% e +2%), ottimo scenario per strategie di vendita Opzioni (Iron Condor, Theta Burn).
+                        * **⚠️ Probabilità Stop Loss:** Percentuale di rischio che il titolo scenda di un valore **pari o inferiore al -2%**, suggerendo prudenza o l'impostazione di coperture.
+                        * **Affidabilità Algoritmo (Score):** Indica la precisione matematica dei modelli durante la fase di backtest sull'ultimo 20% dei dati storici analizzati.
+                        """)
                         
                     st.success("Sincronizzazione dati e report eseguiti correttamente.")
                 else:

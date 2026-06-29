@@ -90,7 +90,7 @@ if tipo_analisi == "📈 Dashboard Predittiva Settimanale":
                 """, unsafe_allow_html=True)
 
 
-# --- SEZIONE 2: MODELLO OPZIONI E RISCHIO (VERSIONE ENSEMBLE AVANZATA) ---
+# --- SEZIONE 2: MODELLO OPZIONI E RISCHIO ---
 elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
     st.title("📊 Modello Predittivo Avanzato: Opzioni, Stop-Loss e Take-Profit")
     st.markdown("<p style='color: #64748b;'>Analisi statistica predittiva con Ensemble Learning e proiezione lineare dei prezzi a 7 giorni.</p>", unsafe_allow_html=True)
@@ -130,8 +130,19 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     
                     # Target Classificazione Opzioni (Orizzonte 7 giorni)
                     rendimento_futuro_7g = (df['Close'].shift(-7) - df['Close']) / df['Close']
-                    condizioni = [(rendimento_futuro_7g >= 0.04), (rendimento_futuro_7g <= -0.03)]
-                    df['Target_Class'] = np.select(condizioni, choices=[2, 1], default=0)
+                    
+                    # SOLUZIONE SENZA NP.SELECT: ciclo for nativo in Python
+                    target_classes = []
+                    for val in rendimento_futuro_7g:
+                        if pd.isna(val):
+                            target_classes.append(0)
+                        elif val >= 0.04:
+                            target_classes.append(2)
+                        elif val <= -0.03:
+                            target_classes.append(1)
+                        else:
+                            target_classes.append(0)
+                    df['Target_Class'] = target_classes
                     
                     # Target Regressione Prezzi Giornalieri (t+1 a t+5)
                     for i in range(1, 6):

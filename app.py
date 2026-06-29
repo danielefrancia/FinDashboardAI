@@ -140,24 +140,4 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         df[f'Target_Price_t+{i}'] = df['Close'].shift(-i)
                     
                     # Allineamento split e pulizia NaN storici
-                    df = df.bfill().ffill()
-                    
-                    ultimo_stato = df.iloc[-1].copy()
-                    df_train = df.dropna().copy()
-                    
-                    features = ['RSI', 'Distanza_Banda_Sup', 'Distanza_Banda_Inf', 'Volumi_Standardizzati']
-                    X = df_train[features]
-                    y_class = df_train['Target_Class']
-                    
-                    # Machine Learning Ensemble
-                    split = int(len(df_train) * 0.8)
-                    modello_rf1 = RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42)
-                    modello_rf2 = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=2026)
-                    modello_rf1.fit(X.iloc[:split], y_class.iloc[:split])
-                    modello_rf2.fit(X.iloc[:split], y_class.iloc[:split])
-                    accuratezza = modello_rf1.score(X.iloc[split:], y_class.iloc[split:])
-                    
-                    vettore_input = np.array([ultimo_stato[features].values])
-                    prob1 = modello_rf1.predict_proba(vettore_input)[0]
-                    prob2 = modello_rf2.predict_proba(vettore_input)[0]
-                    probabilita_array = (prob1 + prob2)
+                    df =

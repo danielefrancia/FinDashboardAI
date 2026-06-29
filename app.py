@@ -25,17 +25,15 @@ st.markdown("""
 
 engine = FinancialEngine()
 
-# --- BARRA LATERALE (NAVIGAZIONE & INPUT UNICO) ---
+# --- BARRA LATERALE ---
 st.sidebar.title("📊 Navigazione")
 tipo_analisi = st.sidebar.radio(
     "Moduli Disponibili:",
     ["📈 Dashboard Predittiva Settimanale", "🔄 Modello Opzioni, Stop-Loss & Rischio"]
 )
 st.sidebar.markdown("---")
-
 st.sidebar.subheader("🎯 Configurazione Target")
 ticker_global = st.sidebar.text_input("Ticker di Riferimento:", "MU").upper().strip()
-
 st.sidebar.markdown("---")
 st.sidebar.caption("Sviluppato con FinGPT & TradingAgents")
 
@@ -97,18 +95,15 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
             try:
                 ticker_pulito = ticker_global.split('.')[0]
                 stock_obj = yf.Ticker(ticker_pulito)
-                
-                # CORRETTO: auto_adjust=True per riproporzionare i prezzi storici pre-split al valore di oggi
                 df = stock_obj.history(period="2y", interval="1d", auto_adjust=True, actions=True)
                 
                 if not df.empty and len(df) > 50:
                     if isinstance(df.columns, pd.MultiIndex):
                         df.columns = df.columns.droplevel(1)
                     
-                    # Estrazione prezzo coerente rettificato
                     prezzo_attuale = float(df['Close'].iloc[-1])
                     
-                    # Calcolo indicatori tecnici stabili
+                    # Indicatori Tecnici
                     delta = df['Close'].diff()
                     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -127,7 +122,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     df['Vol_STD20'] = df['Volume'].rolling(window=20).std()
                     df['Volumi_Standardizzati'] = (df['Volume'] - df['Vol_Media20']) / (df['Vol_STD20'] + 1e-10)
                     
-                    # Target di classificazione (Orizzonte 7 giorni)
+                    # Target Classificazione Rischio
                     rendimento_futuro_7g = (df['Close'].shift(-7) - df['Close']) / df['Close']
                     target_classes = []
                     for val in rendimento_futuro_7g:
@@ -137,12 +132,11 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         else: target_classes.append(0)
                     df['Target_Class'] = target_classes
                     
+                    # CORREZIONE: Addestriamo la regressione sul RENDIMENTO futuro (variazione %), non sul prezzo assoluto
                     for i in range(1, 6):
-                        df[f'Target_Price_t+{i}'] = df['Close'].shift(-i)
+                        df[f'Target_Return_t+{i}'] = (df['Close'].shift(-i) - df['Close']) / df['Close']
                     
-                    # Pulizia NaN storici ed allineamento ottimale
                     df = df.bfill().ffill()
-                    
                     ultimo_stato = df.iloc[-1].copy()
                     df_train = df.dropna().copy()
                     
@@ -150,7 +144,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     X = df_train[features]
                     y_class = df_train['Target_Class']
                     
-                    # Machine Learning Ensemble
+                    # Machine Learning Ensemble (Classificazione)
                     split = int(len(df_train) * 0.8)
                     modello_rf1 = RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42)
                     modello_rf2 = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=2026)
@@ -168,18 +162,23 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     prob_stop_loss = probabilita_array[classi_modello.index(1)] if 1 in classi_modello else 0.0
                     prob_take_profit = probabilita_array[classi_modello.index(2)] if 2 in classi_modello else 0.0
                     
+                    # CORREZIONE REGRESSIONE LINEARE: Calcolo variazioni e ricostruzione dinamica del prezzo basata su prezzo_attuale
                     previsioni_prezzo = []
+                    variaz_reg_salvate = []
                     for i in range(1, 6):
-                        y_reg = df_train[f'Target_Price_t+{i}']
+                        y_reg = df_train[f'Target_Return_t+{i}']
                         modello_reg = LinearRegression()
                         modello_reg.fit(X, y_reg)
-                        previsioni_prezzo.append(modello_reg.predict(vettore_input)[0])
+                        variazione_stimata = modello_reg.predict(vettore_input)[0]
+                        
+                        # Impediamo oscillazioni assurde dovute a code storiche anomale
+                        variazione_stimata = np.clip(variazione_stimata, -0.15, 0.15)
+                        variaz_reg_salvate.append(variazione_stimata)
+                        previsioni_prezzo.append(prezzo_attuale * (1 + variazione_stimata))
                     
-                    # Calcolo Volatilità Media Estesa per Range Operativo
                     df['Daily_Range'] = (df['High'] - df['Low']) / df['Close']
                     volatilia_media = float(df['Daily_Range'].tail(10).mean())
                     
-                    # --- INTERSEZIONE DEI MODELLI (FUSIONE INTELLIGENTE) ---
                     macro_data = engine.analyze_ticker(ticker_global)
                     sentiment_macro = macro_data['sentiment']
                     
@@ -188,19 +187,19 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     if sentiment_macro > 65 and prob_take_profit > 0.40:
                         conclusione_hub = "🟢 CONDIZIONE DI ACQUISTO (BULLISH CONVERGENCE)"
                         colore_hub = "#10b981"
-                        desc_hub = f"Sia l'analisi multi-agente ({sentiment_macro}% sentiment) sia il modello probabilistico statistico confermano un'elevata probabilità di rialzo. Gli ingressi nei giorni indicati come 'Acquisto' hanno un rischio controllato."
+                        desc_hub = f"Sia l'analisi multi-agente ({sentiment_macro}% sentiment) sia il modello probabilistico statistico confermano un'elevata probabilità di rialzo."
                     elif prob_stop_loss > 0.45:
                         conclusione_hub = "🔴 EVITARE INGRESSI / ATTESA (BEARISH DOMINANCE)"
                         colore_hub = "#ef4444"
-                        desc_hub = f"Attenzione: Anche se il sentiment ciclico può mostrare rimbalzi, l'Ensemble di Machine Learning rileva un rischio di Stop Loss del {prob_stop_loss:.1%}. Struttura tecnica debole."
+                        desc_hub = f"Attenzione: L'Ensemble di Machine Learning rileva un rischio di Stop Loss del {prob_stop_loss:.1%}. Struttura tecnica debole."
                     else:
                         conclusione_hub = "🟡 STRATEGIA NEUTRA DI COMPRESSIONE (CONSOLIDAMENTO)"
                         colore_hub = "#f59e0b"
-                        desc_hub = "I modelli divergono o indicano lateralità. Ottima stabilità per strategie basate sulla vendita di opzioni o trading di range tra i livelli di supporto e resistenza calcolati."
+                        desc_hub = "I modelli divergono o indicano lateralità. Ottima stabilità per strategie basate sul trading di range."
 
                     target_prossima_sessione = previsioni_prezzo[0]
-                    var_prossima_sessione = ((target_prossima_sessione - prezzo_attuale) / prezzo_attuale)
-                    estensione_attesa = target_prossima_sessione * volatilia_media
+                    var_prossima_sessione = variaz_reg_salvate[0]
+                    estensione_attesa = prezzo_attuale * volatilia_media
 
                     st.markdown(f"""
                         <div class="fusion-box">
@@ -217,7 +216,6 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    # Specchietti metriche grafiche
                     col1, col2 = st.columns(2)
                     with col1:
                         st.markdown("#### 📈 Indicatori Tecnici Certificati")
@@ -242,10 +240,9 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                             </div>
                         """, unsafe_allow_html=True)
                     
-                    # Proiezioni lineari adattive a 5 giorni
                     st.write("---")
                     st.subheader("📅 Proiezione Lineare Adattiva (t+1 a t+5)")
-                    st.write("Prezzi puntuali attesi calcolati tramite regressione basata sulle metriche correnti.")
+                    st.write("Prezzi puntuali attesi calcolati tramite regressione logica adattata alle variazioni percentuali.")
                     
                     giorni_settimana = []
                     data_corrente = datetime.now()
@@ -259,7 +256,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     df_previsioni = pd.DataFrame({
                         'Giorno Previsto': giorni_settimana,
                         'Prezzo Target': [f"${p:.2f}" for p in previsioni_prezzo],
-                        'Variazione Attesa': [f"{((p - prezzo_attuale) / prezzo_attuale):+.2%}" for p in previsioni_prezzo]
+                        'Variazione Attesa': [f"{v:+.2%}" for v in variaz_reg_salvate]
                     })
                     
                     c_tab, c_graf = st.columns([1, 1])

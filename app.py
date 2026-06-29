@@ -34,24 +34,71 @@ tipo_analisi = st.sidebar.radio(
 
 st.sidebar.markdown("---")
 
-# --- NUOVA SEZIONE: GUIDA NELLA BARRA LATERALE ---
-st.sidebar.subheader("📖 Guida all'Uso")
-with st.sidebar.expander("💡 Come interpretare i Moduli?"):
-    st.markdown("""
-    * **Modulo Dashboard (Ciclico):** Analizza il sentiment macro (*FinGPT*) e la stagionalità storica dei giorni della settimana. Ti mostra la "mappa stradale" psicologica del mercato.
-    * **Modulo Rischio (Quantitativo):** Analizza puramente i dati matematici recenti (ultime 48-120 ore). Calcola l'inerzia tecnica e le probabilità di rischio a 7 giorni.
-    """)
-
-with st.sidebar.expander("🎯 Come pianificare la settimana?"):
-    st.markdown("""
-    1. **Oggi (t+1):** Segui fedelmente la **Matrice Operativa Integrata** del Modulo 2. È il guardiano real-time più preciso.
-    2. **Altri Giorni:** Trova i giorni caldi nel Modulo 1 (es. *Acquisto* di Martedì). 
-    3. **Valida il Trend:** Controlla se la *Probabilità Take Profit* del Modulo 2 è solida (>40%) e se la curva della *Proiezione Lineare* sale verso quel giorno. Se coincidono, l'affidabilità è massima.
-    """)
-
-st.sidebar.markdown("---")
+# --- CONFIGURAZIONE TARGET NELLA BARRA LATERALE ---
 st.sidebar.subheader("🎯 Configurazione Target")
 ticker_global = st.sidebar.text_input("Ticker di Riferimento:", "MU").upper().strip()
+st.sidebar.markdown("---")
+
+# --- GENERAZIONE GUIDA DINAMICA E SPECIFICA IN ITALIANO ---
+st.sidebar.subheader(f"📖 Guida Operativa: {ticker_global}")
+
+if ticker_global:
+    try:
+        ticker_pulito = ticker_global.split('.')[0]
+        stock_guida = yf.Ticker(ticker_pulito)
+        df_guida = stock_guida.history(period="30d", interval="1d", auto_adjust=True)
+        
+        if not df_guida.empty and len(df_guida) > 20:
+            chiusura_attuale = float(df_guida['Close'].iloc[-1])
+            
+            # RSI rapid calcs
+            delta = df_guida['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / (loss + 1e-10)
+            rsi_attuale = float(100 - (100 / (1 + rs)).iloc[-1])
+            
+            # Bollinger
+            ma20 = df_guida['Close'].rolling(window=20).mean()
+            std20 = df_guida['Close'].rolling(window=20).std()
+            b_upper = float((ma20 + (2 * std20)).iloc[-1])
+            b_lower = float((ma20 - (2 * std20)).iloc[-1])
+            
+            if rsi_attuale > 70:
+                condizione_rsi = "IPERCOMPRATO 🔥"
+                consiglio_do = f"Valuta prese di profitto parziali o l'acquisto di opzioni Put protettive. Il titolo è surriscaldato a breve termine."
+                consiglio_dont = "Evita assolutamente ingressi 'FOMO' (inseguendo il rialzo) sui massimi della sessione attuale."
+            elif rsi_attuale < 30:
+                condizione_rsi = "IPERVENDUTO 📉"
+                consiglio_do = f"Inizia ad accumulare posizioni long in scala (Dollar Cost Averaging). Il prezzo è statisticamente a sconto."
+                consiglio_dont = "Non vendere in preda al panico se il prezzo rompe i supporti di breve termine; potresti liquidare sui minimi."
+            else:
+                condizione_rsi = "NEUTRO / TREND ATTIVO ↕️"
+                if chiusura_attuale > ma20.iloc[-1]:
+                    consiglio_do = f"Mantieni la posizione long assecondando l'inerzia rialzista. Usa la media a 20 giorni (${ma20.iloc[-1]:.2f}) come Stop di protezione."
+                    consiglio_dont = "Evita di metterti contro-trend (short selvaggi) senza inversioni strutturali macro confermate."
+                else:
+                    consiglio_do = "Attendi il breakout della resistenza volumetrica o il test del supporto inferiore prima di esporti."
+                    consiglio_dont = "Non anticipare il mercato immettendo size importanti senza una chiara conferma di inversione strutturale."
+
+            with st.sidebar.expander("🔍 Stato Tecnico Attuale"):
+                st.markdown(f"""
+                * **Prezzo Ultimo:** ${chiusura_attuale:.2f}
+                * **RSI (14gg):** {rsi_attuale:.1f} ({condizione_rsi})
+                * **Bande Bollinger:** Min ${b_lower:.2f} | Max ${b_upper:.2f}
+                """)
+                
+            with st.sidebar.expander("🎯 COSA FARE (Do's)"):
+                st.markdown(f"✅ **{consiglio_do}**")
+                
+            with st.sidebar.expander("❌ COSA EVITARE (Don'ts)"):
+                st.markdown(f"⚠️ **{consiglio_dont}**")
+                st.markdown("⚠️ *Evita di operare se l'Affidabilità Algoritmica nel Modulo 2 scende sotto il 45%.*")
+        else:
+            st.sidebar.warning("Storico insufficiente per generare consigli personalizzati.")
+    except Exception as e:
+        st.sidebar.error("Guida non disponibile: inserisci un ticker valido.")
+
 st.sidebar.markdown("---")
 st.sidebar.caption("Sviluppato con FinGPT & TradingAgents")
 
@@ -116,11 +163,9 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                 df = stock_obj.history(period="2y", interval="1d", auto_adjust=True, actions=True)
                 
                 if not df.empty and len(df) > 50:
-                    # FIX CRITICO: Pulizia robusta e sicura dei Multi-Index per evitare il bug del -79%
                     if isinstance(df.columns, pd.MultiIndex):
                         df.columns = [col[0] for col in df.columns]
                     
-                    # Forziamo le colonne necessarie a Series flat monodimensionali
                     df = pd.DataFrame({
                         'Open': df['Open'].squeeze(),
                         'High': df['High'].squeeze(),
@@ -150,151 +195,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     df['Vol_STD20'] = df['Volume'].rolling(window=20).std()
                     df['Volumi_Standardizzati'] = (df['Volume'] - df['Vol_Media20']) / (df['Vol_STD20'] + 1e-10)
                     
-                    # Target Classificazione Rischio (7 giorni)
+                    # Definizione Target Generati nel Futuro (Evitando Leakage)
                     rendimento_futuro_7g = (df['Close'].shift(-7) - df['Close']) / df['Close']
                     target_classes = []
-                    for val in rendimento_futuro_7g:
-                        if pd.isna(val): target_classes.append(0)
-                        elif val >= 0.02: target_classes.append(2)
-                        elif val <= -0.02: target_classes.append(1)
-                        else: target_classes.append(0)
-                    df['Target_Class'] = target_classes
-                    
-                    # Regressione sui rendimenti percentuali futuri (t+1 a t+5)
-                    for i in range(1, 6):
-                        df[f'Target_Return_t+{i}'] = (df['Close'].shift(-i) - df['Close']) / df['Close']
-                    
-                    df = df.bfill().ffill()
-                    ultimo_stato = df.iloc[-1].copy()
-                    df_train = df.dropna().copy()
-                    
-                    features = ['RSI', 'Distanza_Banda_Sup', 'Distanza_Banda_Inf', 'Volumi_Standardizzati']
-                    X = df_train[features]
-                    y_class = df_train['Target_Class']
-                    
-                    # Machine Learning Ensemble (Classificazione)
-                    split = int(len(df_train) * 0.8)
-                    modello_rf1 = RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42)
-                    modello_rf2 = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=2026)
-                    modello_rf1.fit(X.iloc[:split], y_class.iloc[:split])
-                    modello_rf2.fit(X.iloc[:split], y_class.iloc[:split])
-                    accuratezza = modello_rf1.score(X.iloc[split:], y_class.iloc[split:])
-                    
-                    vettore_input = np.array([ultimo_stato[features].values])
-                    prob1 = modello_rf1.predict_proba(vettore_input)[0]
-                    prob2 = modello_rf2.predict_proba(vettore_input)[0]
-                    probabilita_array = (prob1 + prob2) / 2
-                    
-                    classi_modello = list(modello_rf1.classes_)
-                    prob_laterale = probabilita_array[classi_modello.index(0)] if 0 in classi_modello else 0.0
-                    prob_stop_loss = probabilita_array[classi_modello.index(1)] if 1 in classi_modello else 0.0
-                    prob_take_profit = probabilita_array[classi_modello.index(2)] if 2 in classi_modello else 0.0
-                    
-                    # Calcolo proiezioni tramite Regressione Lineare
-                    previsioni_prezzo = []
-                    variaz_reg_salvate = []
-                    for i in range(1, 6):
-                        y_reg = df_train[f'Target_Return_t+{i}']
-                        modello_reg = LinearRegression()
-                        modello_reg.fit(X, y_reg)
-                        variazione_stimata = modello_reg.predict(vettore_input)[0]
-                        
-                        variazione_stimata = np.clip(variazione_stimata, -0.15, 0.15)
-                        variaz_reg_salvate.append(variazione_stimata)
-                        previsioni_prezzo.append(prezzo_attuale * (1 + variazione_stimata))
-                    
-                    df['Daily_Range'] = (df['High'] - df['Low']) / df['Close']
-                    volatilia_media = float(df['Daily_Range'].tail(10).mean())
-                    
-                    macro_data = engine.analyze_ticker(ticker_global)
-                    sentiment_macro = macro_data['sentiment']
-                    
-                    st.write(f"### 🎯 Matrice Operativa Integrata (Sentiment + Rischio)")
-                    
-                    if sentiment_macro > 65 and prob_take_profit > 0.40:
-                        conclusione_hub = "🟢 CONDIZIONE DI ACQUISTO (BULLISH CONVERGENCE)"
-                        colore_hub = "#10b981"
-                        desc_hub = f"Sia l'analisi multi-agente ({sentiment_macro}% sentiment) sia il modello probabilistico statistico confermano un'elevata probabilità di rialzo."
-                    elif prob_stop_loss > 0.45:
-                        conclusione_hub = "🔴 EVITARE INGRESSI / ATTESA (BEARISH DOMINANCE)"
-                        colore_hub = "#ef4444"
-                        desc_hub = f"Attenzione: L'Ensemble di Machine Learning rileva un rischio di Stop Loss del {prob_stop_loss:.1%}. Struttura tecnica debole."
-                    else:
-                        conclusione_hub = "🟡 STRATEGIA NEUTRA DI COMPRESSIONE (CONSOLIDAMENTO)"
-                        colore_hub = "#f59e0b"
-                        desc_hub = "I modelli divergono o indicano lateralità. Ottima stabilità per strategie basate sul trading di range."
-
-                    target_prossima_sessione = previsioni_prezzo[0]
-                    var_prossima_sessione = variaz_reg_salvate[0]
-                    estensione_attesa = prezzo_attuale * volatilia_media
-
-                    st.markdown(f"""
-                        <div class="fusion-box">
-                            <span style="color: #94a3b8; font-size: 0.85rem; font-weight: bold;">FUSIONE INTELLIGENTE MULTI-MODELLO</span>
-                            <h3 style="margin: 5px 0 12px 0; color: {colore_hub}; font-size: 1.35rem !important;">{conclusione_hub}</h3>
-                            <p style="color: #cbd5e1; font-size: 0.95rem; margin-bottom: 12px;">{desc_hub}</p>
-                            <hr style="border-color: #1e293b; margin: 10px 0;">
-                            <p style="font-size: 1rem; margin-bottom: 4px; color: #f8fafc;">
-                                📅 <b>Target Prossima Sessione (t+1):</b> ${target_prossima_sessione:.2f} <span style="color:{colore_hub}; font-weight:bold;">({var_prossima_sessione:+.2%})</span>
-                            </p>
-                            <p style="font-size: 0.95rem; margin-bottom: 0; color: #94a3b8;">
-                                🎯 <b>Range Operativo Stimato:</b> Min: <span style="color:#ef4444;">${(target_prossima_sessione - estensione_attesa/2):.2f}</span> | Max: <span style="color:#10b981;">${(target_prossima_sessione + estensione_attesa/2):.2f}</span>
-                            </p>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("#### 📈 Indicatori Tecnici Certificati")
-                        st.markdown(f"""
-                            <div class="metric-box">
-                                <b>Ultimo Prezzo di Chiusura:</b> ${prezzo_attuale:.2f}<br>
-                                <b>RSI (14 giorni):</b> <span style="color:#3b82f6; font-weight:bold;">{ultimo_stato['RSI']:.2f}</span><br>
-                                <b>Resistenza (Bollinger Sup.):</b> ${ultimo_stato['Bollinger_Upper']:.2f}<br>
-                                <b>Supporto (Bollinger Inf.):</b> ${ultimo_stato['Bollinger_Lower']:.2f}<br>
-                                <b>Z-Score Volumi:</b> {ultimo_stato['Volumi_Standardizzati']:.2f}
-                            </div>
-                        """, unsafe_allow_html=True)
-                        
-                    with col2:
-                        st.markdown("#### 🎯 Probabilità dell'Ensemble Model")
-                        st.markdown(f"""
-                            <div class="metric-box">
-                                <b>Affidabilità Algoritmo:</b> {accuratezza:.2%}<br>
-                                <span style="color:#10b981; font-weight:bold;">🚀 Probabilità Take Profit (≥ +2%):</span> {prob_take_profit:.1%}<br>
-                                <span style="color:#3b82f6; font-weight:bold;">↔️ Probabilità Lateralità:</span> {prob_laterale:.1%}<br>
-                                <span style="color:#ef4444; font-weight:bold;">⚠️ Probabilità Stop Loss (≤ -2%):</span> {prob_stop_loss:.1%}
-                            </div>
-                        """, unsafe_allow_html=True)
-                    
-                    st.write("---")
-                    st.subheader("📅 Proiezione Lineare Adattiva (t+1 a t+5)")
-                    st.write("Prezzi puntuali attesi calcolati tramite regressione logica adattata alle variazioni percentuali.")
-                    
-                    giorni_settimana = []
-                    data_corrente = datetime.now()
-                    passo = 1
-                    while len(giorni_settimana) < 5:
-                        giorno_futuro = data_corrente + timedelta(days=passo)
-                        if giorno_futuro.weekday() < 5:
-                            giorni_settimana.append(giorno_futuro.strftime('%A (%d/%m)'))
-                        passo += 1
-                    
-                    df_previsioni = pd.DataFrame({
-                        'Giorno Previsto': giorni_settimana,
-                        'Prezzo Target': [f"${p:.2f}" for p in previsioni_prezzo],
-                        'Variazione Attesa': [f"{v:+.2%}" for v in variaz_reg_salvate]
-                    })
-                    
-                    c_tab, c_graf = st.columns([1, 1])
-                    with c_tab:
-                        st.dataframe(df_previsioni, use_container_width=True, hide_index=True)
-                    with c_graf:
-                        df_chart = pd.DataFrame({'Prezzo Target': previsioni_prezzo}, index=giorni_settimana)
-                        st.line_chart(df_chart)
-                        
-                    st.success("Sincronizzazione dati e report eseguiti correttamente.")
-                else:
-                    st.error("Dati storici non disponibili o non allineati per il ticker inserito.")
-            except Exception as e:
-                st.error(f"Errore di calcolo nell'Hub di integrazione: {str(e)}")
+                    for val in rendimento_futuro_

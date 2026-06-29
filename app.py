@@ -10,7 +10,7 @@ from engine import FinancialEngine
 # Configurazione del layout della pagina
 st.set_page_config(page_title="Piattaforma Analisi AI", layout="wide", initial_sidebar_state="expanded")
 
-# Stile CSS per il look scuro ultra-professionale
+# Stile CSS ottimizzato
 st.markdown("""
     <style>
     .block-container { padding-top: 2rem; padding-bottom: 2rem; }
@@ -19,25 +19,26 @@ st.markdown("""
     .hot-card { background-color: #1e293b; border-left: 4px solid #3b82f6; padding: 15px; border-radius: 6px; margin-bottom: 10px; }
     .day-card { background-color: #1e293b; padding: 15px; border-radius: 8px; border: 1px solid #334155; text-align: center; }
     .metric-box { background-color: #1e293b; border: 1px solid #334155; padding: 15px; border-radius: 8px; margin-bottom: 10px; }
+    .fusion-box { background-color: #0f172a; border: 2px solid #a855f7; padding: 20px; border-radius: 10px; margin-bottom: 25px; }
     </style>
 """, unsafe_allow_html=True)
 
 engine = FinancialEngine()
 
-# --- BARRA LATERALE (SIDEBAR) PER SELEZIONARE L'ANALISI ---
+# --- BARRA LATERALE ---
 st.sidebar.title("📊 Navigazione")
-st.sidebar.markdown("Seleziona il tipo di analisi che desideri consultare:")
-
 tipo_analisi = st.sidebar.radio(
     "Moduli Disponibili:",
     ["📈 Dashboard Predittiva Settimanale", "🔄 Modello Opzioni, Stop-Loss & Rischio"]
 )
-
 st.sidebar.markdown("---")
 st.sidebar.caption("Sviluppato con FinGPT & TradingAgents")
 
+# --- GLOBAL INPUT (Sincronizzazione dei Ticker) ---
+st.sidebar.subheader("🎯 Configurazione Target")
+ticker_global = st.sidebar.text_input("Ticker di Riferimento:", "MU").upper().strip()
 
-# --- SEZIONE 1: DASHBOARD SETTIMANALE ---
+# --- MODULO 1: DASHBOARD SETTIMANALE ---
 if tipo_analisi == "📈 Dashboard Predittiva Settimanale":
     st.title("📈 Financial Insights Dashboard")
     st.markdown("<p style='color: #64748b;'>Analisi predittiva multi-agente integrata</p>", unsafe_allow_html=True)
@@ -57,11 +58,9 @@ if tipo_analisi == "📈 Dashboard Predittiva Settimanale":
     st.markdown("<br><hr style='border-color: #334155;'>", unsafe_allow_html=True)
 
     st.write("### 🔍 Analisi Predittiva Settimanale")
-    ticker_input = st.text_input("Inserisci un Ticker manualmente:", "NVDA", key="ticker_set").upper()
-
-    if ticker_input:
+    if ticker_global:
         with st.spinner("Elaborazione modelli AI in corso..."):
-            data = engine.analyze_ticker(ticker_input)
+            data = engine.analyze_ticker(ticker_global)
             
         st.markdown(f"#### Target: <span style='color: #3b82f6;'>{data['name']}</span> ({data['ticker']})", unsafe_allow_html=True)
         
@@ -70,16 +69,12 @@ if tipo_analisi == "📈 Dashboard Predittiva Settimanale":
         m2.metric(label="Previsione Statistica", value=data['prediction'])
         
         st.write("#### 📅 Strategia Operativa nei Giorni della Settimana")
-        
         giorni_cols = st.columns(5)
         for idx, (giorno, dettagli) in enumerate(data['weekly'].items()):
             with giorni_cols[idx]:
-                if "Acquisto" in dettagli['stato']:
-                    color = "#10b981"
-                elif "Vendita" in dettagli['stato']:
-                    color = "#ef4444"
-                else:
-                    color = "#f59e0b"
+                if "Acquisto" in dettagli['stato']: color = "#10b981"
+                elif "Vendita" in dettagli['stato']: color = "#ef4444"
+                else: color = "#f59e0b"
                     
                 st.markdown(f"""
                     <div class="day-card">
@@ -90,31 +85,33 @@ if tipo_analisi == "📈 Dashboard Predittiva Settimanale":
                 """, unsafe_allow_html=True)
 
 
-# --- SEZIONE 2: MODELLO OPZIONI E RISCHIO ---
+# --- MODULO 2: MODELLO OPZIONI E RISCHIO (CON FUSIONE LOGICA) ---
 elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
-    st.title("📊 Modello Predittivo Avanzato: Opzioni, Stop-Loss e Take-Profit")
-    st.markdown("<p style='color: #64748b;'>Analisi statistica predittiva con Ensemble Learning e proiezione lineare dei prezzi a 7 giorni.</p>", unsafe_allow_html=True)
+    st.title("📊 Modello Predittivo Avanzato & Strategia Integrata")
+    st.markdown("<p style='color: #64748b;'>Validazione statistica del rischio incrociata con l'analisi multi-agente.</p>", unsafe_allow_html=True)
     
-    ticker_input = st.text_input("Inserisci Ticker (es. PLTR, MU, ASML, NVDA):", "MU", key="ticker_opz").upper()
-    
-    if ticker_input:
-        with st.spinner("Estrazione dati storici ed elaborazione indicatori avanzati..."):
+    if ticker_global:
+        with st.spinner("Estrazione e pulizia dati real-time..."):
             try:
-                # 1. Download e pulizia dati (3 anni per garantire stabilità al Machine Learning)
-                df = yf.Ticker(ticker_input).history(period="3y", auto_adjust=True)
+                # Forza lo scarico dei dati puliti e non corrotti del mercato US
+                ticker_pulito = ticker_global.split('.')[0]
+                stock_obj = yf.Ticker(ticker_pulito)
+                df = stock_obj.history(period="2y", interval="1d", auto_adjust=True)
                 
                 if not df.empty and len(df) > 50:
                     if isinstance(df.columns, pd.MultiIndex):
                         df.columns = df.columns.droplevel(1)
                     
-                    # Calcolo RSI (14 periodi)
+                    # Estrazione prezzo coerente allineato all'istante t
+                    prezzo_attuale = float(df['Close'].iloc[-1])
+                    
+                    # Calcolo indicatori tecnici stabili
                     delta = df['Close'].diff()
                     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
                     rs = gain / (loss + 1e-10)
                     df['RSI'] = 100 - (100 / (1 + rs))
                     
-                    # Calcolo Bande di Bollinger (20 periodi, 2 deviazioni standard)
                     df['MA20'] = df['Close'].rolling(window=20).mean()
                     df['STD20'] = df['Close'].rolling(window=20).std()
                     df['Bollinger_Upper'] = df['MA20'] + (2 * df['STD20'])
@@ -123,50 +120,38 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     df['Distanza_Banda_Sup'] = (df['Close'] - df['Bollinger_Upper']) / df['Bollinger_Upper']
                     df['Distanza_Banda_Inf'] = (df['Close'] - df['Bollinger_Lower']) / df['Bollinger_Lower']
                     
-                    # Calcolo Volumi Standardizzati (Z-Score)
                     df['Vol_Media20'] = df['Volume'].rolling(window=20).mean()
                     df['Vol_STD20'] = df['Volume'].rolling(window=20).std()
                     df['Volumi_Standardizzati'] = (df['Volume'] - df['Vol_Media20']) / (df['Vol_STD20'] + 1e-10)
                     
-                    # Target Classificazione Opzioni (Orizzonte 7 giorni)
+                    # Target di classificazione condizionato
                     rendimento_futuro_7g = (df['Close'].shift(-7) - df['Close']) / df['Close']
-                    
-                    # SOLUZIONE SENZA NP.SELECT: ciclo for nativo in Python
                     target_classes = []
                     for val in rendimento_futuro_7g:
-                        if pd.isna(val):
-                            target_classes.append(0)
-                        elif val >= 0.04:
-                            target_classes.append(2)
-                        elif val <= -0.03:
-                            target_classes.append(1)
-                        else:
-                            target_classes.append(0)
+                        if pd.isna(val): target_classes.append(0)
+                        elif val >= 0.03: target_classes.append(2)
+                        elif val <= -0.03: target_classes.append(1)
+                        else: target_classes.append(0)
                     df['Target_Class'] = target_classes
                     
-                    # Target Regressione Prezzi Giornalieri (t+1 a t+5)
                     for i in range(1, 6):
                         df[f'Target_Price_t+{i}'] = df['Close'].shift(-i)
                     
-                    # Estrazione ultimo stato reale prima di ripulire i NaN per il training
                     ultimo_stato = df.dropna(subset=['RSI', 'Bollinger_Upper', 'Volumi_Standardizzati']).iloc[-1].copy()
                     df_train = df.dropna().copy()
                     
-                    # Caricamento delle Feature
                     features = ['RSI', 'Distanza_Banda_Sup', 'Distanza_Banda_Inf', 'Volumi_Standardizzati']
                     X = df_train[features]
                     y_class = df_train['Target_Class']
                     
-                    # 2. Train Ensemble Classificazione (Walk-Forward Validation)
+                    # Machine Learning Ensemble
                     split = int(len(df_train) * 0.8)
-                    modello_rf1 = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42)
-                    modello_rf2 = RandomForestClassifier(n_estimators=150, min_samples_leaf=4, random_state=2026)
-                    
+                    modello_rf1 = RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42)
+                    modello_rf2 = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=2026)
                     modello_rf1.fit(X.iloc[:split], y_class.iloc[:split])
                     modello_rf2.fit(X.iloc[:split], y_class.iloc[:split])
                     accuratezza = modello_rf1.score(X.iloc[split:], y_class.iloc[split:])
                     
-                    # Predizione Scenari
                     vettore_input = np.array([ultimo_stato[features].values])
                     prob1 = modello_rf1.predict_proba(vettore_input)[0]
                     prob2 = modello_rf2.predict_proba(vettore_input)[0]
@@ -177,7 +162,6 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     prob_stop_loss = probabilita_array[classi_modello.index(1)] if 1 in classi_modello else 0.0
                     prob_take_profit = probabilita_array[classi_modello.index(2)] if 2 in classi_modello else 0.0
                     
-                    # 3. Train Modello di Regressione Prezzi
                     previsioni_prezzo = []
                     for i in range(1, 6):
                         y_reg = df_train[f'Target_Price_t+{i}']
@@ -185,97 +169,63 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         modello_reg.fit(X, y_reg)
                         previsioni_prezzo.append(modello_reg.predict(vettore_input)[0])
                     
-                   # --- INTERFACCIA GRAFICA ---
-                    # Estrazione sicura del prezzo reale (evita MultiIndex e garantisce l'ultimo valore numerico valido)
-                    if isinstance(df['Close'], pd.DataFrame):
-                        prezzo_attuale = float(df['Close'].iloc[-1].values[0])
-                    else:
-                        prezzo_attuale = float(df['Close'].iloc[-1])
-                        
-                    # Calcolo della Volatilità Giornaliera Media degli ultimi 10 giorni per stabilire i target operativi
-                    df['Daily_Range'] = (df['High'] - df['Low']) / df['Close']
-                    volatilia_media = float(df['Daily_Range'].tail(10).mean())
+                    # --- INTERSEZIONE DEI MODELLI (FUSIONE INTELLIGENTE) ---
+                    macro_data = engine.analyze_ticker(ticker_global)
+                    sentiment_macro = macro_data['sentiment']
                     
-                    st.write(f"### Analisi Predittiva del Rischio per {ticker_input} (Orizzonte 7 Giorni)")
+                    st.write(f"### 🎯 Matrice Operativa Integrata (Sentiment + Rischio)")
                     
-                    # --- DETERMINAZIONE SEGNALE OPERATIVO GIORNALIERO ---
-                    if prob_take_profit > 0.45:
-                        segno_operativo = "🟢 ACCUMULO / BULLISH"
-                        colore_segnale = "#10b981"
-                        nota_operativa = "Il modello mostra una forte spinta inerziale verso la banda superiore. Possibile breakout statistico."
-                    elif prob_stop_loss > 0.45:
-                        segno_operativo = "🔴 DISTRIBUZIONE / BEARISH"
-                        colore_segnale = "#ef4444"
-                        nota_operativa = "Rilevata pressione in vendita o volumi in contrazione vicino alle resistenze. Monitorare i supporti."
+                    # Algoritmo di sintesi decisionale
+                    if sentiment_macro > 65 and prob_take_profit > 0.40:
+                        conclusione_hub = "🟢 CONDIZIONE DI ACQUISTO (BULLISH CONVERGENCE)"
+                        colore_hub = "#10b981"
+                        desc_hub = f"Sia l'analisi multi-agente ({sentiment_macro}% sentiment) sia il modello probabilistico statistico confermano un'elevata probabilità di rialzo. Gli ingressi nei giorni indicati come 'Acquisto' hanno un rischio controllato."
+                    elif prob_stop_loss > 0.50:
+                        conclusione_hub = "🔴 EVITARE INGRESSI / ATTESA (BEARISH DOMINANCE)"
+                        colore_hub = "#ef4444"
+                        desc_hub = f"Attenzione: Anche se il sentiment ciclico può mostrare rimbalzi, l'Ensemble di Machine Learning rileva un rischio di Stop Loss del {prob_stop_loss:.1%}. Struttura tecnica debole."
                     else:
-                        segno_operativo = "🟡 ATTESA / LATERALE"
-                        colore_segnale = "#f59e0b"
-                        nota_operativa = "Il prezzo si trova in una fase di compressione all'interno delle Bande di Bollinger. Strategia di trading di raggio."
+                        conclusione_hub = "🟡 STRATEGIA NEUTRA DI COMPRESSIONE (CONSOLIDAMENTO)"
+                        colore_hub = "#f59e0b"
+                        desc_hub = "I modelli divergono o indicano lateralità. Ottima stabilità per strategie basate sulla vendita di opzioni o trading di range tra i livelli di supporto e resistenza calcolati."
 
-                    # Calcolo dei Pivot operativi attesi per la prossima sessione (t+1)
-                    target_prossima_sessione = previsioni_prezzo[0]
-                    var_prossima_sessione = ((target_prossima_sessione - prezzo_attuale) / prezzo_attuale)
-                    estensione_attesa = target_prossima_sessione * volatilia_media
-                    
-                    # --- FOCUS GIORNO CORRENTE & REPORT OPERATIVO AVANZATO ---
                     st.markdown(f"""
-                        <div style="background-color: #0f172a; border: 2px solid #3b82f6; padding: 22px; border-radius: 10px; margin-bottom: 25px;">
-                            <h4 style="margin-top:0; color:#3b82f6; font-size: 1.2rem;">📅 Report Strategico della Prossima Sessione Operativa</h4>
-                            <div style="display: flex; justify-content: space-between; flex-wrap: wrap; margin-bottom: 15px;">
-                                <div style="min-width: 200px; margin-bottom: 10px;">
-                                    <span style="color: #64748b; font-size: 0.9rem;">ULTIMO PREZZO REALE</span><br>
-                                    <span style="font-size: 1.6rem; font-weight: bold; color: #f8fafc;">${prezzo_attuale:.2f}</span>
-                                </div>
-                                <div style="min-width: 200px; margin-bottom: 10px;">
-                                    <span style="color: #64748b; font-size: 0.9rem;">DIREZIONE ENSEMBLE AI</span><br>
-                                    <span style="font-size: 1.2rem; font-weight: bold; color: {colore_segnale};">{segno_operativo}</span>
-                                </div>
-                                <div style="min-width: 200px; margin-bottom: 10px;">
-                                    <span style="color: #64748b; font-size: 0.9rem;">TARGET PUNTUALE ATTESO (t+1)</span><br>
-                                    <span style="font-size: 1.4rem; font-weight: bold; color: #f8fafc;">${target_prossima_sessione:.2f}</span> 
-                                    <span style="font-size: 1rem; color: {colore_segnale}; font-weight: bold;">({var_prossima_sessione:+.2%})</span>
-                                </div>
-                            </div>
-                            <hr style="border-color: #1e293b; margin: 10px 0;">
-                            <p style="font-size: 0.95rem; margin-bottom: 5px; color: #cbd5e1;">
-                                🎯 <b>Range Operativo Stimato:</b> Min: <span style="color:#ef4444;">${(target_prossima_sessione - estensione_attesa/2):.2f}</span> | Max: <span style="color:#10b981;">${(target_prossima_sessione + estensione_attesa/2):.2f}</span>
-                            </p>
-                            <p style="font-size: 0.9rem; color: #94a3b8; font-style: italic; margin-bottom: 0;">
-                                💡 <b>Nota dell'Agente:</b> {nota_operativa}
-                            </p>
+                        <div class="fusion-box">
+                            <span style="color: #94a3b8; font-size: 0.85rem; font-weight: bold;">FUSIONE INTELLIGENTE MULTI-MODELLO</span>
+                            <h3 style="margin: 5px 0 12px 0; color: {colore_hub}; font-size: 1.35rem !important;">{conclusione_hub}</h3>
+                            <p style="color: #cbd5e1; font-size: 0.95rem; margin-bottom: 0;">{desc_hub}</p>
                         </div>
                     """, unsafe_allow_html=True)
                     
+                    # Specchietti metriche
                     col1, col2 = st.columns(2)
                     with col1:
-                        st.markdown("#### 📈 Indicatori di Mercato Calcolati")
+                        st.markdown("#### 📈 Indicatori Tecnici Certificati")
                         st.markdown(f"""
                             <div class="metric-box">
-                                <b>Prezzo di Riferimento:</b> ${prezzo_attuale:.2f}<br>
-                                <b>RSI (14 periodi):</b> <span style="color:#3b82f6; font-weight:bold;">{ultimo_stato['RSI']:.2f}</span><br>
-                                <b>Banda BB Superiore:</b> ${ultimo_stato['Bollinger_Upper']:.2f}<br>
-                                <b>Banda BB Inferiore (Supporto):</b> ${ultimo_stato['Bollinger_Lower']:.2f}<br>
+                                <b>Ultimo Prezzo di Chiusura:</b> ${prezzo_attuale:.2f}<br>
+                                <b>RSI (14 giorni):</b> <span style="color:#3b82f6; font-weight:bold;">{ultimo_stato['RSI']:.2f}</span><br>
+                                <b>Resistenza (Bollinger Sup.):</b> ${ultimo_stato['Bollinger_Upper']:.2f}<br>
+                                <b>Supporto (Bollinger Inf.):</b> ${ultimo_stato['Bollinger_Lower']:.2f}<br>
                                 <b>Z-Score Volumi:</b> {ultimo_stato['Volumi_Standardizzati']:.2f}
                             </div>
                         """, unsafe_allow_html=True)
                         
                     with col2:
-                        st.markdown("#### 🎯 Distribuzione delle Probabilità (Ensemble Model)")
+                        st.markdown("#### 🎯 Probabilità dell'Ensemble Model")
                         st.markdown(f"""
                             <div class="metric-box">
-                                <b>Accuratezza Backtest:</b> {accuratezza:.2%}<br>
-                                <span style="color:#10b981; font-weight:bold;">🚀 Take Profit (≥ +4%):</span> {prob_take_profit:.1%}<br>
-                                <span style="color:#3b82f6; font-weight:bold;">↔️ Scenario Laterale:</span> {prob_laterale:.1%}<br>
-                                <span style="color:#ef4444; font-weight:bold;">⚠️ Stop Loss (≤ -3%):</span> {prob_stop_loss:.1%}
+                                <b>Affidabilità Algoritmo:</b> {accuratezza:.2%}<br>
+                                <span style="color:#10b981; font-weight:bold;">🚀 Probabilità Take Profit (≥ +3%):</span> {prob_take_profit:.1%}<br>
+                                <span style="color:#3b82f6; font-weight:bold;">↔️ Probabilità Lateralità:</span> {prob_laterale:.1%}<br>
+                                <span style="color:#ef4444; font-weight:bold;">⚠️ Probabilità Stop Loss (≤ -3%):</span> {prob_stop_loss:.1%}
                             </div>
                         """, unsafe_allow_html=True)
                     
-                    # --- 4. PREVISIONE PREZZI GIORNALIERI ---
+                    # Proiezioni a 5 giorni
                     st.write("---")
-                    st.subheader("📅 Previsione del Prezzo Target nei Prossimi Giorni")
-                    st.write("Prezzi puntuali attesi calcolati tramite regressione adattiva basata sulle metriche correnti.")
+                    st.subheader("📅 Proiezione Lineare Adattiva (t+1 a t+5)")
                     
-                    # Generazione date escludendo weekend
                     giorni_settimana = []
                     data_corrente = datetime.now()
                     passo = 1
@@ -298,8 +248,8 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         df_chart = pd.DataFrame({'Prezzo Target': previsioni_prezzo}, index=giorni_settimana)
                         st.line_chart(df_chart)
                         
-                    st.success("Analisi statistica e forecast completati con successo.")
+                    st.success("Sincronizzazione dati e report eseguiti correttamente.")
                 else:
-                    st.error("Dati insufficienti su Yahoo Finance per elaborare gli indicatori di questo ticker.")
+                    st.error("Dati storici non disponibili o non allineati per il ticker inserito.")
             except Exception as e:
-                st.error(f"Errore durante l'elaborazione dell'analisi tecnica: {str(e)}")
+                st.error(f"Errore di calcolo nell'Hub di integrazione: {str(e)}")

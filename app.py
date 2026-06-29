@@ -95,16 +95,17 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
     if ticker_global:
         with st.spinner("Estrazione e pulizia dati real-time..."):
             try:
-                # Gestione split e scaricamento pulito
                 ticker_pulito = ticker_global.split('.')[0]
                 stock_obj = yf.Ticker(ticker_pulito)
-                df = stock_obj.history(period="2y", interval="1d", auto_adjust=False, actions=True)
+                
+                # CORRETTO: auto_adjust=True per riproporzionare i prezzi storici pre-split al valore di oggi
+                df = stock_obj.history(period="2y", interval="1d", auto_adjust=True, actions=True)
                 
                 if not df.empty and len(df) > 50:
                     if isinstance(df.columns, pd.MultiIndex):
                         df.columns = df.columns.droplevel(1)
                     
-                    # Estrazione prezzo coerente post-split
+                    # Estrazione prezzo coerente rettificato
                     prezzo_attuale = float(df['Close'].iloc[-1])
                     
                     # Calcolo indicatori tecnici stabili
@@ -139,7 +140,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     for i in range(1, 6):
                         df[f'Target_Price_t+{i}'] = df['Close'].shift(-i)
                     
-                    # Allineamento split e pulizia NaN storici
+                    # Pulizia NaN storici ed allineamento ottimale
                     df = df.bfill().ffill()
                     
                     ultimo_stato = df.iloc[-1].copy()

@@ -186,15 +186,29 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         previsioni_prezzo.append(modello_reg.predict(vettore_input)[0])
                     
                     # --- INTERFACCIA GRAFICA ---
-                    prezzo_attuale = ultimo_stato['Close']
+                    prezzo_attuale = float(df['Close'].iloc[-1]) # Estrazione pulita del prezzo di chiusura più recente
                     st.write(f"### Analisi Predittiva del Rischio per {ticker_input} (Orizzonte 7 Giorni)")
+                    
+                    # --- NUOVO BOX: RECAP FOCUS GIORNO CORRENTE ---
+                    st.markdown(f"""
+                        <div style="background-color: #0f172a; border: 2px solid #3b82f6; padding: 20px; border-radius: 10px; margin-bottom: 25px;">
+                            <h4 style="margin-top:0; color:#3b82f6;">📅 Focus Giorno Corrente & Prospettiva Immediata</h4>
+                            <p style="font-size: 1.1rem; margin-bottom: 8px;">
+                                Il titolo <b>{ticker_input}</b> ha chiuso l'ultima sessione reale a un prezzo di <span style="color:#f8fafc; font-weight:bold;">${prezzo_attuale:.2f}</span>.
+                            </p>
+                            <p style="font-size: 1rem; color: #94a3b8;">
+                                🚀 <b>Target t+1 (Prossima Sessione):</b> ${previsioni_prezzo[0]:.2f} 
+                                ({((previsioni_prezzo[0] - prezzo_attuale) / prezzo_attuale):+.2%})
+                            </p>
+                        </div>
+                    """, unsafe_allow_html=True)
                     
                     col1, col2 = st.columns(2)
                     with col1:
                         st.markdown("#### 📈 Indicatori di Mercato Calcolati")
                         st.markdown(f"""
                             <div class="metric-box">
-                                <b>Prezzo Attuale:</b> ${prezzo_attuale:.2f}<br>
+                                <b>Prezzo di Riferimento:</b> ${prezzo_attuale:.2f}<br>
                                 <b>RSI (14 periodi):</b> <span style="color:#3b82f6; font-weight:bold;">{ultimo_stato['RSI']:.2f}</span><br>
                                 <b>Banda BB Superiore:</b> ${ultimo_stato['Bollinger_Upper']:.2f}<br>
                                 <b>Banda BB Inferiore (Supporto):</b> ${ultimo_stato['Bollinger_Lower']:.2f}<br>
@@ -212,6 +226,37 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                                 <span style="color:#ef4444; font-weight:bold;">⚠️ Stop Loss (≤ -3%):</span> {prob_stop_loss:.1%}
                             </div>
                         """, unsafe_allow_html=True)
+                    
+                    # --- 4. PREVISIONE PREZZI GIORNALIERI ---
+                    st.write("---")
+                    st.subheader("📅 Previsione del Prezzo Target nei Prossimi Giorni")
+                    st.write("Prezzi puntuali attesi calcolati tramite regressione adattiva basata sulle metriche correnti.")
+                    
+                    # Generazione date escludendo weekend
+                    giorni_settimana = []
+                    data_corrente = datetime.now()
+                    passo = 1
+                    while len(giorni_settimana) < 5:
+                        giorno_futuro = data_corrente + timedelta(days=passo)
+                        if giorno_futuro.weekday() < 5:
+                            giorni_settimana.append(giorno_futuro.strftime('%A (%d/%m)'))
+                        passo += 1
+                    
+                    # Corretto il calcolo della variazione percentuale usando il prezzo_attuale ripulito
+                    df_previsioni = pd.DataFrame({
+                        'Giorno Previsto': giorni_settimana,
+                        'Prezzo Target': [f"${p:.2f}" for p in previsioni_prezzo],
+                        'Variazione Attesa': [f"{((p - prezzo_attuale) / prezzo_attuale):+.2%}" for p in previsioni_prezzo]
+                    })
+                    
+                    c_tab, c_graf = st.columns([1, 1])
+                    with c_tab:
+                        st.dataframe(df_previsioni, use_container_width=True, hide_index=True)
+                    with c_graf:
+                        df_chart = pd.DataFrame({'Prezzo Target': previsioni_prezzo}, index=giorni_settimana)
+                        st.line_chart(df_chart)
+                        
+                    st.success("Analisi statistica e forecast completati con successo.")
                     
                     # --- 4. PREVISIONE PREZZI GIORNALIERI ---
                     st.write("---")

@@ -167,6 +167,10 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     if isinstance(df.columns, pd.MultiIndex):
                         df.columns = [col[0] for col in df.columns]
                     
+                    # --- RIMOZIONE TIMESTAMPS / FUSO ORARIO PER EVITARE L'ERRORE ---
+                    if df.index.tz is not None:
+                        df.index = df.index.tz_localize(None)
+
                     df = pd.DataFrame({
                         'Open': df['Open'].squeeze(),
                         'High': df['High'].squeeze(),
@@ -226,7 +230,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
 
                     # --- SIMULAZIONE FORECAST INIZIO MESE (BACKTEST) ---
                     oggi = datetime.now()
-                    inizio_mese = oggi.replace(day=1)
+                    inizio_mese = oggi.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                     dati_mese_corrente = df[df.index >= pd.Timestamp(inizio_mese)]
                     
                     if len(dati_mese_corrente) >= 2:

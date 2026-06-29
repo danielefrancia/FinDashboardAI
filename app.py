@@ -5,6 +5,7 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LinearRegression
 from datetime import datetime, timedelta
+import plotly.graph_objects as go
 from engine import FinancialEngine
 
 # Configurazione del layout della pagina
@@ -51,14 +52,14 @@ if ticker_global:
         if not df_guida.empty and len(df_guida) > 20:
             chiusura_attuale = float(df_guida['Close'].iloc[-1])
             
-            # RSI rapid calcs
+            # Calcolo RSI per Guida
             delta = df_guida['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             rs = gain / (loss + 1e-10)
             rsi_attuale = float(100 - (100 / (1 + rs)).iloc[-1])
             
-            # Bollinger
+            # Calcolo Bollinger per Guida
             ma20 = df_guida['Close'].rolling(window=20).mean()
             std20 = df_guida['Close'].rolling(window=20).std()
             b_upper = float((ma20 + (2 * std20)).iloc[-1])
@@ -66,11 +67,11 @@ if ticker_global:
             
             if rsi_attuale > 70:
                 condizione_rsi = "IPERCOMPRATO 🔥"
-                consiglio_do = f"Valuta prese di profitto parziali o l'acquisto di opzioni Put protettive. Il titolo è surriscaldato a breve termine."
+                consiglio_do = "Valuta prese di profitto parziali o l'acquisto di opzioni Put protettive. Il titolo è surriscaldato a breve termine."
                 consiglio_dont = "Evita assolutamente ingressi 'FOMO' (inseguendo il rialzo) sui massimi della sessione attuale."
             elif rsi_attuale < 30:
                 condizione_rsi = "IPERVENDUTO 📉"
-                consiglio_do = f"Inizia ad accumulare posizioni long in scala (Dollar Cost Averaging). Il prezzo è statisticamente a sconto."
+                consiglio_do = "Inizia ad accumulare posizioni long in scala (Dollar Cost Averaging). Il prezzo è statisticamente a sconto."
                 consiglio_dont = "Non vendere in preda al panico se il prezzo rompe i supporti di breve termine; potresti liquidare sui minimi."
             else:
                 condizione_rsi = "NEUTRO / TREND ATTIVO ↕️"
@@ -79,7 +80,7 @@ if ticker_global:
                     consiglio_dont = "Evita di metterti contro-trend (short selvaggi) senza inversioni strutturali macro confermate."
                 else:
                     consiglio_do = "Attendi il breakout della resistenza volumetrica o il test del supporto inferiore prima di esporti."
-                    consiglio_dont = "Non anticipare il mercato immettendo size importanti senza una chiara conferma di inversione strutturale."
+                    consiglio_dont = "Non anticipare il mercato immettendo size importanti senza una chiara conferma di inversioni."
 
             with st.sidebar.expander("🔍 Stato Tecnico Attuale"):
                 st.markdown(f"""
@@ -195,7 +196,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     df['Vol_STD20'] = df['Volume'].rolling(window=20).std()
                     df['Volumi_Standardizzati'] = (df['Volume'] - df['Vol_Media20']) / (df['Vol_STD20'] + 1e-10)
                     
-                    # Definizione Target Generati nel Futuro (Evitando Leakage)
+                    # Target Shiftati (No data leakage)
                     rendimento_futuro_7g = (df['Close'].shift(-7) - df['Close']) / df['Close']
                     target_classes = []
                     for val in rendimento_futuro_7g:
@@ -210,23 +211,23 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     for i in range(1, 6):
                         df[f'Target_Return_t+{i}'] = (df['Close'].shift(-i) - df['Close']) / df['Close']
                     
-                    # Isolamento Ultima Riga Reale per la Dashboard (Oggi)
+                    # Ultima riga pulita per l'input di oggi
                     ultimo_stato_df = df[features].tail(1)
                     if ultimo_stato_df.isna().values.any():
                         df[features] = df[features].ffill()
                         ultimo_stato_df = df[features].tail(1)
 
-                    # Pulizia Righe d'Addestramento
+                    # Training Dataset
                     df_train = df.dropna(subset=['Target_Class'] + [f'Target_Return_t+{i}' for i in range(1, 6)] + features).copy()
                     
                     if len(df_train) < 30:
-                        st.error("Storico insufficiente per l'addestramento dei modelli.")
+                        st.error("Storico insufficientre per l'addestramento.")
                         st.stop()
                         
                     X = df_train[features]
                     y_class = df_train['Target_Class'].astype(int)
                     
-                    # Addestramento Ensemble
+                    # Ensemble Machine Learning
                     split = int(len(df_train) * 0.8)
                     modello_rf1 = RandomForestClassifier(n_estimators=100, max_depth=8, random_state=42)
                     modello_rf2 = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=2026)
@@ -243,7 +244,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     prob_stop_loss = probabilita_array[classi_modello.index(1)] if 1 in classi_modello else 0.0
                     prob_take_profit = probabilita_array[classi_modello.index(2)] if 2 in classi_modello else 0.0
                     
-                    # Regressione Proiezioni Lineari Puntuali
+                    # Regressioni Lineari da t+1 a t+5
                     previsioni_prezzo = []
                     variaz_reg_salvate = []
                     for i in range(1, 6):
@@ -262,7 +263,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     macro_data = engine.analyze_ticker(ticker_global)
                     sentiment_macro = macro_data['sentiment']
                     
-                    st.write(f"### 🎯 Matrice Operativa Integrata (Sentiment + Rischio)")
+                    st.write("### 🎯 Matrice Operativa Integrata (Sentiment + Rischio)")
                     
                     if sentiment_macro > 65 and prob_take_profit > 0.40:
                         conclusione_hub = "🟢 CONDIZIONE DI ACQUISTO (BULLISH CONVERGENCE)"
@@ -325,7 +326,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     st.subheader("📅 Proiezione Lineare Adattiva (t+1 a t+5)")
                     st.write("Prezzi puntuali attesi calcolati tramite regressione logica adattata alle variazioni percentuali.")
                     
-                    # --- DIZIONARIO DI TRADUZIONE ED ELABORAZIONE GIORNI ---
+                    # --- TRADUZIONE CRONOLOGICA DEI GIORNI IN ITALIANO ---
                     mappa_giorni = {
                         'Monday': 'Lunedì', 'Tuesday': 'Martedì', 'Wednesday': 'Mercoledì',
                         'Thursday': 'Giovedì', 'Friday': 'Venerdì', 'Saturday': 'Sabato', 'Sunday': 'Domenica'
@@ -348,13 +349,47 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         'Variazione Attesa': [f"{v:+.2%}" for v in variaz_reg_salvate]
                     })
                     
+                    # --- RENDERING COERENTE CON PLOTLY (ZOOM DI PREZZO AUTOMATICO) ---
                     c_tab, c_graf = st.columns([1, 1])
                     with c_tab:
                         st.dataframe(df_previsioni, use_container_width=True, hide_index=True)
                     with c_graf:
-                        # Tabella per il grafico con asse Y correttamente scalato al valore del titolo
-                        df_chart = pd.DataFrame({'Prezzo Target': previsioni_prezzo}, index=giorni_settimana)
-                        st.line_chart(df_chart, y="Prezzo Target", use_container_width=True)
+                        df_chart = pd.DataFrame({
+                            'Giorno': giorni_settimana,
+                            'Prezzo': previsioni_prezzo
+                        })
+                        
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(
+                            x=df_chart['Giorno'],
+                            y=df_chart['Prezzo'],
+                            mode='lines+markers',
+                            line=dict(color='#3b82f6', width=3),
+                            marker=dict(size=6, color='#a855f7'),
+                            name='Target Price'
+                        ))
+                        
+                        fig.update_layout(
+                            margin=dict(l=20, r=20, t=10, b=10),
+                            height=280,
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            xaxis=dict(
+                                showgrid=True, 
+                                gridcolor='#1e293b', 
+                                tickfont=dict(color='#94a3b8'),
+                                categoryorder='array',  # Mantiene bloccata la cronologia t+1 -> t+5
+                                categoryarray=giorni_settimana
+                            ),
+                            yaxis=dict(
+                                showgrid=True, 
+                                gridcolor='#1e293b', 
+                                tickfont=dict(color='#94a3b8'),
+                                autorange=True  # Rimuove lo zero forzato ed esegue lo zoom sul prezzo reale
+                            )
+                        )
+                        
+                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
                         
                     st.success("Sincronizzazione dati e report eseguiti correttamente.")
                 else:

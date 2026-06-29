@@ -29,8 +29,8 @@ engine = FinancialEngine()
 # --- BARRA LATERALE ---
 st.sidebar.title("📊 Navigazione")
 tipo_analisi = st.sidebar.radio(
-    "Moduli Disponibili:",
-    ["📈 Dashboard Predittiva Settimanale", "🔄 Modello Opzioni, Stop-Loss & Rischio"]
+    "Moduli Disponibili:",
+    ["📈 Dashboard Predittiva Settimanale", "🔄 Modello Opzioni, Stop-Loss & Rischio"]
 )
 
 st.sidebar.markdown("---")

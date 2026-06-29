@@ -31,6 +31,24 @@ tipo_analisi = st.sidebar.radio(
     "Moduli Disponibili:",
     ["📈 Dashboard Predittiva Settimanale", "🔄 Modello Opzioni, Stop-Loss & Rischio"]
 )
+
+st.sidebar.markdown("---")
+
+# --- NUOVA SEZIONE: GUIDA NELLA BARRA LATERALE ---
+st.sidebar.subheader("📖 Guida all'Uso")
+with st.sidebar.expander("💡 Come interpretare i Moduli?"):
+    st.markdown("""
+    * **Modulo Dashboard (Ciclico):** Analizza il sentiment macro (*FinGPT*) e la stagionalità storica dei giorni della settimana. Ti mostra la "mappa stradale" psicologica del mercato.
+    * **Modulo Rischio (Quantitativo):** Analizza puramente i dati matematici recenti (ultime 48-120 ore). Calcola l'inerzia tecnica e le probabilità di rischio a 7 giorni.
+    """)
+
+with st.sidebar.expander("🎯 Come pianificare la settimana?"):
+    st.markdown("""
+    1. **Oggi (t+1):** Segui fedelmente la **Matrice Operativa Integrata** del Modulo 2. È il guardiano real-time più preciso.
+    2. **Altri Giorni:** Trova i giorni caldi nel Modulo 1 (es. *Acquisto* di Martedì). 
+    3. **Valida il Trend:** Controlla se la *Probabilità Take Profit* del Modulo 2 è solida (>40%) e se la curva della *Proiezione Lineare* sale verso quel giorno. Se coincidono, l'affidabilità è massima.
+    """)
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎯 Configurazione Target")
 ticker_global = st.sidebar.text_input("Ticker di Riferimento:", "MU").upper().strip()
@@ -98,8 +116,18 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                 df = stock_obj.history(period="2y", interval="1d", auto_adjust=True, actions=True)
                 
                 if not df.empty and len(df) > 50:
+                    # FIX CRITICO: Pulizia robusta e sicura dei Multi-Index per evitare il bug del -79%
                     if isinstance(df.columns, pd.MultiIndex):
-                        df.columns = df.columns.droplevel(1)
+                        df.columns = [col[0] for col in df.columns]
+                    
+                    # Forziamo le colonne necessarie a Series flat monodimensionali
+                    df = pd.DataFrame({
+                        'Open': df['Open'].squeeze(),
+                        'High': df['High'].squeeze(),
+                        'Low': df['Low'].squeeze(),
+                        'Close': df['Close'].squeeze(),
+                        'Volume': df['Volume'].squeeze()
+                    }, index=df.index)
                     
                     prezzo_attuale = float(df['Close'].iloc[-1])
                     
@@ -264,24 +292,6 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     with c_graf:
                         df_chart = pd.DataFrame({'Prezzo Target': previsioni_prezzo}, index=giorni_settimana)
                         st.line_chart(df_chart)
-                    
-                    # --- GUIDA METRICHE ESPANDIBILE AGGIORNATA ---
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    with st.expander("📖 Guida Rapida alla Lettura delle Metriche e Discrepanze Moduli"):
-                        st.markdown("""
-                        ### 1. Perché la Strategia Settimanale e le Proiezioni possono differire?
-                        * **Modulo 1 (Strategia Settimanale):** Ragiona su dati qualitativi macro (FinGPT Sentiment) e cicli storici ricorrenti legati ai giorni della settimana. Guarda il quadro psicologico complessivo.
-                        * **Modulo 2 (Proiezione Lineare):** Ignora le news. È un puro modello matematico e reattivo basato sulle ultime 48-120 ore di indicatori quantitativi (`RSI`, volumi standardizzati, `Bande di Bollinger`). Calcola l'inerzia di brevissimo termine.
-                        
-                        ### 2. Come pianificare l'operatività sugli altri giorni?
-                        * **Passo A:** Individua i giorni caldi nel Modulo 1 (es. un giorno marcato come *'Acquisto'*).
-                        * **Passo B:** Verifica le **Probabilità dell'Ensemble Model** (valide a 7 giorni). Se per quella settimana la probabilità di *Take Profit* è solida (>40%) e lo *Stop Loss* è basso, la finestra temporale ciclica è convalidata.
-                        * **Passo C:** Controlla la pendenza della **Proiezione Lineare**. Se la curva a 5 giorni sale in corrispondenza del giorno utile, hai una convergenza perfetta (*Bullish Convergence*). Se la curva scende, indica prudenza o ingressi solo su minimi del range operativo stimato.
-
-                        ### 3. Dettaglio Tecnico dei Modelli
-                        * **Prezzo Target (Linear Regression):** Proietta il prezzo nominale stimato applicando i rendimenti incrementali futuri attesi calcolati sullo stato ipercomprato/ipervenduto odierno.
-                        * **Probabilità Random Forest (Ensemble):** Misura l'affidabilità statistica a 7 giorni. Valuta le probabilità di assistere a una crescita robusta (Take Profit $\geq +2\%$), compressione laterale (ottima per strategie su Opzioni) o ritracciamento (Stop Loss $\leq -2\%$).
-                        """)
                         
                     st.success("Sincronizzazione dati e report eseguiti correttamente.")
                 else:

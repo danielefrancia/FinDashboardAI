@@ -229,9 +229,10 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         regressori[i] = reg_m
 
                     # --- SIMULAZIONE FORECAST INIZIO MESE (BACKTEST) ---
-                    oggi = datetime.now()
-                    inizio_mese = oggi.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                    dati_mese_corrente = df[df.index >= pd.Timestamp(inizio_mese)]
+                   oggi = datetime.now()
+                    # Cambiamo la logica: invece di inizio_mese fisso, usiamo una finestra mobile di 30 giorni
+                    data_di_riferimento = oggi - timedelta(days=30) 
+                    dati_mese_corrente = df[df.index >= pd.Timestamp(data_di_riferimento)]
                     
                     if len(dati_mese_corrente) >= 2:
                         idx_inizio = dati_mese_corrente.index[0]

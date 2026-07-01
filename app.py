@@ -180,7 +180,6 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     }, index=df.index)
                     
                     prezzo_attuale = float(df['Close'].iloc[-1])
-                    st.error(f"Errore di calcolo nell'Hub di integrazione: {str(e)}")
                     
                     # --- CALCOLO INDICATORI SULLO STORICO ---
                     delta = df['Close'].diff()
@@ -214,7 +213,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         else: target_classes.append(0)
                     df['Target_Class'] = target_classes
 
-                   # --- ADDESTRAMENTO MODELLI SUI DATI STORICI ---
+                    # --- ADDESTRAMENTO MODELLI SUI DATI STORICI ---
                     df_pulito = df.dropna(subset=['Target_Class'] + [f'Target_Return_t+{i}' for i in range(1, 6)] + features).copy()
                     X_all = df_pulito[features]
                     y_class_all = df_pulito['Target_Class'].astype(int)
@@ -228,23 +227,24 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         reg_m = LinearRegression()
                         reg_m.fit(X_all, df_pulito[f'Target_Return_t+{i}'])
                         regressori[i] = reg_m
-                try:
-                    # --- SIMULAZIONE FORECAST (CORRETTO PER VEDERE DATI AD OGGI) ---
+
+                    # --- SIMULAZIONE FORECAST INIZIO MESE (BACKTEST) ---
                     oggi = datetime.now()
-                    # Finestra mobile di 30 giorni
-                    data_di_riferimento = oggi - timedelta(days=30) 
-                    dati_mese_corrente = df[df.index >= pd.Timestamp(data_di_riferimento)]
+                    inizio_mese = oggi.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    dati_mese_corrente = df[df.index >= pd.Timestamp(inizio_mese)]
                     
                     if len(dati_mese_corrente) >= 2:
                         idx_inizio = dati_mese_corrente.index[0]
                         prezzo_inizio = float(df.loc[idx_inizio, 'Close'])
                         features_inizio = df.loc[[idx_inizio], features]
                         
-                        date_forecast_storico = [idx_inizio]
-                        prezzi_forecast_storico = [prezzo_inizio]
+                        date_forecast_storico = []
+                        prezzi_forecast_storico = []
+                        
+                        date_forecast_storico.append(idx_inizio)
+                        prezzi_forecast_storico.append(prezzo_inizio)
                         
                         pos_iniziale = df.index.get_loc(idx_inizio)
-                        
                         for i in range(1, 6):
                             if pos_iniziale + i < len(df):
                                 data_f = df.index[pos_iniziale + i]
@@ -253,14 +253,9 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                                 
                                 date_forecast_storico.append(data_f)
                                 prezzi_forecast_storico.append(prezzo_inizio * (1 + var_stimata))
-                        
                         show_backtest = True
                     else:
                         show_backtest = False
-                        st.warning("Dati insufficienti per il backtest.")
-                        
-                except Exception as e:
-                    st.error(f"Errore durante l'addestramento o il forecast: {e}")
 
                     # --- PROIEZIONE FUTURA IN AVANTI AD OGGI (t+1 a t+5) ---
                     ultimo_stato_df = df[features].tail(1).ffill()

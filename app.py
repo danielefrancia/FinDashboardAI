@@ -180,6 +180,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                     }, index=df.index)
                     
                     prezzo_attuale = float(df['Close'].iloc[-1])
+                    st.error(f"Errore di calcolo nell'Hub di integrazione: {str(e)}")
                     
                     # --- CALCOLO INDICATORI SULLO STORICO ---
                     delta = df['Close'].diff()

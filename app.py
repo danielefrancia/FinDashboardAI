@@ -228,7 +228,7 @@ elif tipo_analisi == "🔄 Modello Opzioni, Stop-Loss & Rischio":
                         reg_m = LinearRegression()
                         reg_m.fit(X_all, df_pulito[f'Target_Return_t+{i}'])
                         regressori[i] = reg_m
-
+                try:
                     # --- SIMULAZIONE FORECAST (CORRETTO PER VEDERE DATI AD OGGI) ---
                     oggi = datetime.now()
                     # Finestra mobile di 30 giorni
